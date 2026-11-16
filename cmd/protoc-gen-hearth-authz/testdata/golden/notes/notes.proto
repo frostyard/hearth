@@ -1,0 +1,113 @@
+// The notes golden case: 2 services that both have an RPC named Get, an RPC
+// whose request carries a selector at its root, an RPC whose selector is found
+// through a nested message, an RPC with an object id and no selector, and an RPC
+// with neither.
+syntax = "proto3";
+
+package frostyard.notes.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/notesv1;notesv1";
+
+// Note is 1 note, filed in a group.
+message Note {
+  // id identifies the note.
+  string id = 1;
+  // group is the selector the note is filed under.
+  string group = 2 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// GetRequest names the note to read.
+message GetRequest {
+  // id identifies the note.
+  string id = 1;
+}
+
+// GetResponse carries the note that was read.
+message GetResponse {
+  // note is the note that was read.
+  Note note = 1;
+}
+
+// ListRequest names the group to list.
+message ListRequest {
+  // group is the selector the notes are filed under.
+  string group = 1 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// ListResponse carries the notes of a group.
+message ListResponse {
+  // notes are the notes of the group.
+  repeated Note notes = 1;
+}
+
+// CreateRequest carries the note to write.
+message CreateRequest {
+  // note is the note to write.
+  Note note = 1;
+}
+
+// CreateResponse carries the note that was written.
+message CreateResponse {
+  // note is the note that was written.
+  Note note = 1;
+}
+
+// PingRequest asks for a pong.
+message PingRequest {}
+
+// PingResponse answers with a text.
+message PingResponse {
+  // text is the answer.
+  string text = 1;
+}
+
+// Notes serves notes.
+service Notes {
+  // Get reads 1 note.
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "notes:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+  // List reads the notes of 1 group.
+  rpc List(ListRequest) returns (ListResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "notes:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+  // Create writes 1 note.
+  rpc Create(CreateRequest) returns (CreateResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "notes:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+    };
+  }
+  // Ping answers.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "notes:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}
+
+// Admin serves the same notes to an administrator, and it has an RPC named Get
+// too.
+service Admin {
+  // Get reads 1 note.
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "notes:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}

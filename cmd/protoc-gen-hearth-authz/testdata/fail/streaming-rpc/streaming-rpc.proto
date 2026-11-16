@@ -1,0 +1,33 @@
+// The streaming-rpc fail case: the model allows a UI RPC that streams, and the
+// permission plugin refuses it, because a permission check reads 1 request.
+syntax = "proto3";
+
+package frostyard.app.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/appv1;appv1";
+
+// WatchRequest names the group to watch.
+message WatchRequest {
+  // group is the selector the notes are filed under.
+  string group = 1 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// WatchResponse carries 1 change.
+message WatchResponse {
+  // id identifies the note that changed.
+  string id = 1;
+}
+
+// Things serves the app.
+service Things {
+  // Watch streams the changes of 1 group.
+  rpc Watch(WatchRequest) returns (stream WatchResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}

@@ -23,9 +23,11 @@ Incubating and pre-release. The repository is a frostyard/core
 [Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)
 repository: its decision date is 2027-03-31. Phase 1 is built: the options,
 the model, the manifest plugin, the schema, the CLI, the Go gate and the docs
-site. The permission runtime, the lodge adapter, the MCP plugin, the events
-plugin and the runtime are later tasks of the
-[roadmap](docs/plans/0001-roadmap.md); do not build them early.
+site. Phase 2 is built: the permission runtime, the permission plugin, the
+lodge adapter, the MCP plugin and its server, and the demo app of
+`internal/e2e`. The events plugin, the transports and the example app are
+later tasks of the [roadmap](docs/plans/0001-roadmap.md); do not build them
+early.
 
 ## Map
 
@@ -43,7 +45,24 @@ plugin and the runtime are later tasks of the
   under `testdata/`.
 - `cmd/hearth`: the CLI, `hearth manifest diff` and `hearth manifest validate`.
   The standard library `flag` package only; no cobra.
-- `testdata/e2e/`: a demo app, its buf template and its committed manifest.
+- `authz/`: the permission runtime: a grant of items (a capability on a path),
+  the check, the caller in the context and the transaction in the context
+  ([specs/permissions.md](docs/specs/permissions.md)).
+- `cmd/protoc-gen-hearth-authz`: the plugin that writes 1 check for each RPC,
+  the hook of each RPC on an object id, and the wrapper that runs them.
+- `lodge/`: the adapter to lodge: the peer check of the app's lodge socket, the
+  `Lodge-Principal` and `Lodge-Grant` headers, and the local user of the
+  private socket.
+- `cmd/protoc-gen-hearth-mcp` and `mcpserver/`: the tools of an app's agent RPCs,
+  with the proto3 JSON schema and the effect's hints
+  ([specs/mcp-tools.md](docs/specs/mcp-tools.md)), and the server that serves
+  them, over stdio too.
+- `internal/protoschema`: the JSON Schema of the proto3 JSON form of 1 message.
+- `testdata/e2e/`: a demo app's proto, its buf template and its committed
+  manifest.
+- `internal/e2e/`: the demo app: its generated code (`internal/e2e/gen/`), its
+  hooks on an in-memory store, and the tests that prove the refusal, the move
+  and the stdio tools.
 - `internal/workflowcheck`: the repository's own rules as Go tests: the
   workflows, the risk-path list, the corrections inbox, the Dependabot entries
   and the buf configuration.

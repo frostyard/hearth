@@ -7,7 +7,7 @@ package frostyard.demo.v1;
 
 import "frostyard/hearth/v1/options.proto";
 
-option go_package = "github.com/frostyard/hearth/testdata/e2e/gen/frostyard/demo/v1;demov1";
+option go_package = "github.com/frostyard/hearth/internal/e2e/gen/frostyard/demo/v1;demov1";
 
 // Note is 1 note, filed in a group.
 message Note {
@@ -60,7 +60,19 @@ service NoteService {
       permission: "demo:publish"
       effect: EFFECT_OUTWARD
       expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
       agent_description: "Publish a note to the outside world."
+    };
+  }
+  // MoveNote moves a note to another group.
+  rpc MoveNote(MoveNoteRequest) returns (MoveNoteResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "demo:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Move a note to another group."
+      examples: "{\"id\": \"n-1\", \"to_group\": \"/work\"}"
     };
   }
 }
@@ -105,6 +117,20 @@ message CreateNoteResponse {
 message PublishNoteRequest {
   // id identifies the note.
   string id = 1;
+}
+
+// MoveNoteRequest names the note to move, and the group it moves to.
+message MoveNoteRequest {
+  // id identifies the note to move.
+  string id = 1;
+  // to_group is the selector value of the group the note moves to.
+  string to_group = 2 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// MoveNoteResponse carries the note after the move.
+message MoveNoteResponse {
+  // note is the note after the move.
+  Note note = 1;
 }
 
 // PublishNoteResponse reports the publication.

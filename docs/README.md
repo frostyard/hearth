@@ -18,6 +18,8 @@ Docs are split by the question they answer:
 - [0003 — Verify gate, risk paths and corrections](adr/0003-verify-gate-risk-paths-and-corrections.md)
 - [0004 — Generate an app's manifest from hearth's Protobuf options](adr/0004-generate-the-manifest-from-protobuf-options.md)
 - [0005 — Run the repository gate in Go](adr/0005-run-the-repository-gate-in-go.md)
+- [0006 — Check permissions in the app, and trust lodge only on its socket](adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md)
+- [0007 — Generate MCP tools from an app's agent RPCs](adr/0007-generate-mcp-tools-from-agent-rpcs.md)
 
 ### Org-wide decisions
 
@@ -32,6 +34,8 @@ Docs are split by the question they answer:
 
 - [Options](specs/options.md)
 - [Manifest](specs/manifest.md)
+- [Permissions](specs/permissions.md)
+- [MCP tools](specs/mcp-tools.md)
 
 ### Plans
 

@@ -80,7 +80,17 @@
     {
       "glob": "authz/**",
       "level": "L1",
-      "why": "permission-generation-and-checks: auth, the permission runtime that a later task builds"
+      "why": "permission-generation-and-checks: auth, the permission runtime that every generated check and the lodge adapter use"
+    },
+    {
+      "glob": "cmd/protoc-gen-hearth-mcp/**",
+      "level": "L2",
+      "why": "permission-generation-and-checks: auth, the plugin that turns an app's agent RPCs into MCP tools, with the JSON Schema and the hints an agent sees"
+    },
+    {
+      "glob": "mcpserver/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the MCP server that runs an app's tools with the caller of its context, and the stdio server of the local user"
     },
     {
       "glob": "lodge/**",
