@@ -232,7 +232,12 @@ func TestDeleteNote(t *testing.T) {
 func TestReadFilters(t *testing.T) {
 	example := app(t)
 	bus := inproc.New()
-	filters, err := events.ReadFilters("notelite", "folder", "/work")
+	// The filters of a grant item on /work cover the app's created and deleted
+	// notes there, and no other folder's.
+	filters, err := events.ReadFilters(
+		[]events.Spec{notesv1.EventNoteCreated, notesv1.EventNoteDeleted},
+		authz.Item{Cap: "notelite:read", Sel: map[string]string{"folder": "/work"}},
+	)
 	if err != nil {
 		t.Fatalf("events.ReadFilters: %v", err)
 	}

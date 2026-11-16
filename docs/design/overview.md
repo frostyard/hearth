@@ -133,9 +133,9 @@ writes it to the outbox of the change's transaction. An event is a thin
 CloudEvents envelope: its own UUIDv7 `id`, the object's id as `subject`, the
 caller of the context as `author`, and the object's path as `selector`, with
 no data. Its topic is the event's topic of the manifest, then 1 token for each
-segment of the path, percent-encoded, so that a read grant on a path is a
-topic filter (`events.ReadFilters`) that a broker applies without reading the
-message. [specs/events.md](../specs/events.md) is the exact contract.
+segment of the path, percent-encoded, so that a grant item is a set of topic
+filters (`events.ReadFilters`), 1 per event type of the item's capability,
+that a broker applies without reading the message. [specs/events.md](../specs/events.md) is the exact contract.
 
 ### The outbox and the relay
 

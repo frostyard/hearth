@@ -12,7 +12,6 @@ package outbox
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -67,12 +66,13 @@ func Tx(tx *sql.Tx) events.Writer {
 }
 
 // Write writes 1 event in the transaction: its id, its topic and its envelope.
+//
+// It checks the event first, so that an event that no transport would take
+// fails inside the change's transaction, and the transaction writes no row that
+// would block the relay.
 func (w *writer) Write(ctx context.Context, e events.Event) error {
-	if e.ID == "" {
-		return errors.New("events/outbox: the event has no id")
-	}
-	if e.Topic == "" {
-		return fmt.Errorf("events/outbox: the event %s has no topic", e.ID)
+	if err := e.Validate(); err != nil {
+		return err
 	}
 	data, err := e.MarshalJSON()
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,6 +184,61 @@ func TestWriteChecks(t *testing.T) {
 	}
 	if err := outbox.Tx(tx).Write(ctx, events.Event{ID: good.ID}); err == nil {
 		t.Error("Write took an event with no topic")
+	}
+}
+
+// TestWriteChecksInvalid checks that 1 event that no transport would take fails
+// Write inside the transaction, so that the outbox holds no row that the relay
+// cannot publish, and that a valid event still passes.
+func TestWriteChecksInvalid(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "outbox.db"))
+	ctx := t.Context()
+	good := event(t, "n-1")
+	noAuthor := good
+	noAuthor.Author = ""
+	longEnvelope := good
+	longEnvelope.Subject = strings.Repeat("a", events.MaxEnvelopeLen)
+	for _, tc := range []struct {
+		name  string
+		event events.Event
+		want  string
+	}{
+		{"no author", noAuthor, "the author is required"},
+		{"an envelope that is too long", longEnvelope, "the envelope is"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatalf("begin the transaction: %v", err)
+			}
+			err = outbox.Tx(tx).Write(ctx, tc.event)
+			if err == nil {
+				_ = tx.Rollback()
+				t.Fatalf("Write took the event with %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("the error = %q, want it to hold %q", err, tc.want)
+			}
+			var held int
+			if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hearth_outbox").Scan(&held); err != nil {
+				t.Fatalf("count the outbox's rows: %v", err)
+			}
+			if held != 0 {
+				t.Errorf("the transaction holds %d row(s), want none", held)
+			}
+			if err := tx.Rollback(); err != nil {
+				t.Fatalf("roll back the transaction: %v", err)
+			}
+			if got := rows(t, db); got != 0 {
+				t.Errorf("the outbox holds %d rows after the rollback, want none", got)
+			}
+		})
+	}
+
+	// A valid event still passes, and it commits.
+	write(t, db, good)
+	if got := rows(t, db); got != 1 {
+		t.Errorf("the outbox holds %d rows, want the 1 valid event", got)
 	}
 }
 

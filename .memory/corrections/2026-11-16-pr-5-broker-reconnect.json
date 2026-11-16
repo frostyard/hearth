@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events/broker",
+  "correction": "The NATS transport's reconnection has a test: the socket drops and holds the connection, a drain fails and keeps its row, and after the release the row publishes and the stream holds it once.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 5",
+  "promoted_to": "TestReconnect (events/broker)"
+}

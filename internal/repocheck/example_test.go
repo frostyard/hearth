@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -169,6 +170,96 @@ func TestExampleVendoredOptions(t *testing.T) {
 	if string(own) != string(copied) {
 		t.Errorf("examples/notes-lite/third_party/%s differs from proto/%s: copy hearth's file again with the README's command, and change nothing else", file, file)
 	}
+}
+
+// TestExampleGofmtNeedsNoGit checks the example's format check: it runs the
+// recipe's gofmt line in 1 directory that is no git checkout, so that the check
+// needs no git, and it fails on 1 file that gofmt would change.
+func TestExampleGofmtNeedsNoGit(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not on PATH, so the recipe cannot run")
+	}
+	gofmtPath, err := exec.LookPath("gofmt")
+	if err != nil {
+		t.Skip("gofmt is not on PATH, so the recipe cannot run")
+	}
+	var line string
+	for _, recipe := range verifyRecipe(t, filepath.Join(exampleDir, "Makefile"), "verify") {
+		if strings.Contains(recipe, "gofmt") {
+			if line != "" {
+				t.Fatalf("the verify target has 2 gofmt lines: %q and %q", line, recipe)
+			}
+			line = recipe
+		}
+	}
+	if line == "" {
+		t.Fatal("the verify target has no gofmt line")
+	}
+
+	dir := t.TempDir()
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		t.Fatal("the test's directory is a git checkout, so it cannot show that the check needs no git")
+	}
+	run := func(t *testing.T) (string, int) {
+		t.Helper()
+		command := exec.Command(shell, "-c", line)
+		command.Dir = dir
+		command.Env = append(os.Environ(), "PATH="+filepath.Dir(gofmtPath)+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := command.CombinedOutput()
+		return string(out), exitCode(err)
+	}
+
+	// 1 formatted file passes.
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := run(t); code != 0 {
+		t.Errorf("the check of a formatted file = exit %d, want 0:\n%s", code, out)
+	}
+
+	// 1 file that gofmt changes fails, and it is named.
+	if err := os.WriteFile(filepath.Join(dir, "b.go"), []byte("package a\nfunc  b()  {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, code := run(t)
+	if code == 0 {
+		t.Errorf("the check of a file that gofmt changes passed, and it must fail:\n%s", out)
+	}
+	if !strings.Contains(out, "b.go") {
+		t.Errorf("the check's output does not name b.go:\n%s", out)
+	}
+}
+
+// verifyRecipe returns the recipe lines of 1 target of 1 Makefile, with the
+// leading tab and "@" removed, and each "$$" as 1 "$".
+func verifyRecipe(t *testing.T, path, target string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	var (
+		out      []string
+		inRecipe bool
+	)
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if !inRecipe {
+			if strings.HasPrefix(line, target+":") {
+				inRecipe = true
+			}
+			continue
+		}
+		if !strings.HasPrefix(line, "\t") {
+			break
+		}
+		recipe := strings.TrimPrefix(strings.TrimPrefix(line, "\t"), "@")
+		out = append(out, strings.ReplaceAll(recipe, "$$", "$"))
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s holds no recipe for %s", path, target)
+	}
+	return out
 }
 
 // TestExampleBlocks checks the block parser on in-memory READMEs.

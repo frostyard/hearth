@@ -39,6 +39,7 @@ An event is 1 JSON object, CloudEvents 1.0 in its structured JSON form, with no
 | `events.New(ctx, spec, subject, path)` | builds 1 event, with the time and the id of now |
 | `events.NewAt(ctx, spec, subject, path, now, random)` | builds 1 event with a given time and random source |
 | `events.ErrNoCaller` | the error that a context with no caller gives |
+| `Event.Validate()` | every required member set, the topic at most `MaxTopicLen`, the id a UUID, and the envelope at most `MaxEnvelopeLen` |
 
 ### The topic
 
@@ -63,10 +64,21 @@ An event is 1 JSON object, CloudEvents 1.0 in its structured JSON form, with no
 
 ### The read filters
 
-| Grant item | Filters (`events.ReadFilters(app, selector, path)`) |
-| --- | --- |
-| on the root | `<app>.>` |
-| on path G | `<app>.*.*.<selector>.<e(G)>` and `<app>.*.*.<selector>.<e(G)>.>` |
+`events.ReadFilters(specs []Spec, item authz.Item) ([]string, error)` returns
+the filters of 1 grant item over an app's event specs, in the order of the
+specs. Only a spec whose `ReadPermission` is the item's `Cap` gives filters; T
+is its topic, and G the item's path for the spec's selector (the root when the
+item names none):
+
+| Spec | Item | Filters |
+| --- | --- | --- |
+| a selector | G is the root | `T` and `T.>` |
+| a selector | G is a path | `T.<e(G)>` and `T.<e(G)>.>` |
+| no selector | | `T` |
+| any | names another selector at a path below the root | none |
+
+No spec of the item's capability gives an empty list. An invalid spec or path
+is an error.
 
 `events.Match(filter, topic)` matches as NATS does: `*` is exactly 1 token, and
 `>` as the last token is 1 or more tokens. `events.ValidFilter(filter)` refuses
@@ -120,8 +132,8 @@ CREATE TABLE IF NOT EXISTS hearth_outbox (
 | `events.Transport` | `Publish(ctx, Event) error`: returns nil only once the transport holds the event |
 | `inproc.New()` | the in-process bus of a standalone app |
 | `Bus.Subscribe(filter, handle) (cancel, error)` | calls `handle` for each event whose topic `filter` matches |
-| `broker.Dial(broker.Options{Socket, User, Name, Timeout, Logger})` | a NATS connection over 1 Unix socket, such as lodge's `/run/lodge/nats.sock` |
-| `Transport.Publish(ctx, e)` | a JetStream publish of `e`, which waits for the `PubAck` |
+| `broker.Dial(broker.Options{Socket, User, Name, Timeout, ReconnectWait, Logger})` | a NATS connection over 1 Unix socket, such as lodge's `/run/lodge/nats.sock`, which reconnects when the broker comes back (`ReconnectWait`: nats.go's default when 0) |
+| `Transport.Publish(ctx, e)` | validates `e`, then a JetStream publish of it, which waits for the `PubAck` |
 
 A NATS publish has the subject `e.Topic`, the header `Nats-Msg-Id` set to
 `e.ID`, the header `Content-Type: application/cloudevents+json`, and the
@@ -140,10 +152,14 @@ envelope as its data.
   Unicode NFC, no empty, `.` or `..` segment, no trailing `/`); an empty path is
   the root. An invalid path is an error that wraps `*authz.PathError`.
 - An event with no selector takes no path: a path that is not empty is an error.
-- A topic longer than 1024 bytes (`events.MaxTopicLen`) is an error, so the
-  change that would write it fails in its transaction.
-- `Parse` refuses an unknown member, a missing required member, a `specversion`
-  other than `1.0`, and a `time` that is not RFC 3339.
+- A topic longer than 1024 bytes (`events.MaxTopicLen`) or an envelope longer
+  than 32 KiB (`events.MaxEnvelopeLen`) is an error, so the change that would
+  write it fails in its transaction: a row that no broker takes would stop the
+  relay. `NewAt`, `outbox.Tx(…).Write` and the NATS transport's `Publish` each
+  run `Event.Validate`.
+- `Parse` refuses an unknown member, a member name in another case, a
+  duplicate member, a missing required member, a `specversion` other than
+  `1.0`, and a `time` that is not RFC 3339.
 
 ### The outbox and the relay
 

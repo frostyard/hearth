@@ -56,12 +56,19 @@ These facts hold:
   `<app>.<object>.<verb>.<selector>`, then 1 token for each segment of the
   object's path; the root path adds no token. A segment percent-encodes every
   byte outside `[A-Za-z0-9-]`, so no segment holds a `.`, a `*`, a `>` or a
-  space. A topic longer than 1024 bytes is an error when the event is built.
+  space. A topic longer than 1024 bytes, or an envelope longer than 32 KiB,
+  is an error when the event is built and when the outbox writes it, so an
+  event that no broker takes never commits.
   An event with no selector has the topic `<app>.<object>.<verb>`.
-- **A read grant is a topic filter.** A grant on path G of a selector gives
-  `<app>.*.*.<selector>.<G>` and `<app>.*.*.<selector>.<G>.>`; a grant on the
-  root gives `<app>.>`. hearth computes them (`events.ReadFilters`), so lodge
-  and the app encode a path 1 way.
+- **A read grant is a set of topic filters, 1 event type at a time.** A
+  grant item gives filters only for the events whose read permission is the
+  item's capability. On path G of the event's selector, the event's topic `T`
+  gives `T.<G>` and `T.<G>.>`; on the root, `T` and `T.>`; an event with no
+  selector gives `T` itself, and only to an item that holds no other selector
+  below the root. Each filter is a subset of the app-wide filters
+  `<app>.*.*.<selector>.<G>` and `<app>.>`, which would also match the events
+  of another read permission. hearth computes them from the app's specs
+  (`events.ReadFilters`), so lodge and the app encode a path 1 way.
 - **The plugin writes 1 publisher per event.** `protoc-gen-hearth-events`
   writes, for each event message `M`, the event's `events.Spec` (`EventM`),
   `NewM` (which builds the envelope from the context's caller) and `EmitM`
@@ -100,7 +107,12 @@ These facts hold:
 - An app that publishes events keeps its data in a SQL database that the outbox
   can share. The outbox speaks SQLite through `database/sql`.
 - A change commits only when its event can be built: an object whose path makes
-  a topic longer than 1024 bytes cannot be written.
+  a topic longer than 1024 bytes, or whose id makes an envelope longer than
+  32 KiB, cannot be written. 1 row that no broker takes would stop the relay
+  for every later event.
+- A consumer's filters come from the app's event specs, which lodge reads from
+  the manifest: a grant item never matches an event of another read
+  permission.
 - A consumer must de-duplicate by `id`: the relay can repeat an event after a
   crash, and the 2-minute window of JetStream does not cover every repeat.
 - 1 relay serves 1 database. 2 relays on 1 database can publish 1 event twice,

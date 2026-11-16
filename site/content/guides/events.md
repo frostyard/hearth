@@ -84,10 +84,13 @@ percent-encoded:
 | `/work` | `notelite.note.created.folder.work` |
 | `/Work Notes/2026_Q1` | `notelite.note.created.folder.Work%20Notes.2026%5FQ1` |
 
-So a read grant on a folder is a topic filter. `events.ReadFilters` gives
-them: a grant on `/work` reads `notelite.*.*.folder.work` and
-`notelite.*.*.folder.work.>`, and a grant on `/` reads `notelite.>`. lodge uses
-the same function's rule to filter what a consumer receives.
+So a read grant on a folder is a set of topic filters, 1 for each event that
+the grant's capability reads. `events.ReadFilters` gives them from the app's
+event specs: an item `notelite:read` on `/work` reads
+`notelite.note.created.folder.work` and `notelite.note.created.folder.work.>`,
+the same for `note.deleted`, and nothing of an event that another capability
+reads. lodge uses the same function's rule to filter what a consumer
+receives.
 
 ## Write the event with the change
 

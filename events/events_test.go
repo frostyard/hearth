@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -305,6 +307,66 @@ func TestMaxTopicLen(t *testing.T) {
 	}
 }
 
+// TestValidate checks the checks of 1 event before its change commits, and
+// before a transport publishes it.
+func TestValidate(t *testing.T) {
+	valid := func(t *testing.T) events.Event {
+		t.Helper()
+		event, err := events.NewAt(local(), spec, "n-1", "/work", fixed, fixedRandom())
+		if err != nil {
+			t.Fatalf("NewAt: %v", err)
+		}
+		return event
+	}
+	if err := valid(t).Validate(); err != nil {
+		t.Errorf("Validate of a valid event: %v", err)
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*events.Event)
+		want   string
+	}{
+		{"no id", func(e *events.Event) { e.ID = "" }, "the id is required"},
+		{"an id that is no UUID", func(e *events.Event) { e.ID = strings.ToUpper(e.ID) }, "is not a lower-case UUID"},
+		{"no source", func(e *events.Event) { e.Source = "" }, "the source is required"},
+		{"no type", func(e *events.Event) { e.Type = "" }, "the type is required"},
+		{"no subject", func(e *events.Event) { e.Subject = "" }, "the subject (the object's id) is required"},
+		{"no author", func(e *events.Event) { e.Author = "" }, "the author is required"},
+		{"no time", func(e *events.Event) { e.Time = time.Time{} }, "the time is required"},
+		{"no topic", func(e *events.Event) { e.Topic = "" }, "the topic is required"},
+		{"a topic that is too long", func(e *events.Event) { e.Topic = "demo." + strings.Repeat("a", events.MaxTopicLen) }, "the topic is"},
+		{"an envelope that is too long", func(e *events.Event) { e.Subject = strings.Repeat("a", events.MaxEnvelopeLen) }, "the envelope is"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			event := valid(t)
+			tc.change(&event)
+			err := event.Validate()
+			if err == nil {
+				t.Fatalf("Validate took the event with %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("the error = %q, want it to hold %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestNewAtEnvelopeLimit checks that an event whose envelope is longer than
+// MaxEnvelopeLen fails NewAt, so that the outbox never holds a row that no
+// transport takes.
+func TestNewAtEnvelopeLimit(t *testing.T) {
+	_, err := events.NewAt(local(), spec, strings.Repeat("a", 40<<10), "/work", fixed, fixedRandom())
+	if err == nil {
+		t.Fatal("NewAt took a subject of 40 KiB")
+	}
+	if !strings.Contains(err.Error(), "the envelope is") {
+		t.Errorf("the error = %q, want it to name the envelope", err)
+	}
+	if !strings.Contains(err.Error(), strconv.Itoa(events.MaxEnvelopeLen)) {
+		t.Errorf("the error = %q, want it to name the limit %d", err, events.MaxEnvelopeLen)
+	}
+}
+
 // TestEncodeSegment checks the encoding of each kind of byte.
 func TestEncodeSegment(t *testing.T) {
 	for _, tc := range []struct{ segment, token string }{
@@ -325,61 +387,97 @@ func TestEncodeSegment(t *testing.T) {
 	}
 }
 
-// TestReadFilters checks the filters of the root path and of a path: the root
-// is every event of the app, and a path is 2 filters.
+// TestReadFilters checks the filters of 1 grant item over the app's event specs:
+// 1 filter for each event of the item's capability, and no filter for another
+// capability's event.
 func TestReadFilters(t *testing.T) {
+	specs := []events.Spec{spec, noSelector}
 	for _, tc := range []struct {
 		name string
-		path string
+		item authz.Item
 		want []string
 	}{
-		{"absent", "", []string{"demo.>"}},
-		{"root", "/", []string{"demo.>"}},
-		{"1 segment", "/work", []string{"demo.*.*.group.work", "demo.*.*.group.work.>"}},
-		{"2 segments", "/work/2026_Q1", []string{"demo.*.*.group.work.2026%5FQ1", "demo.*.*.group.work.2026%5FQ1.>"}},
+		{
+			"the read capability, no selector value",
+			authz.Item{Cap: "demo:read"},
+			[]string{"demo.note.created.group", "demo.note.created.group.>"},
+		},
+		{
+			"the read capability, the root path",
+			authz.Item{Cap: "demo:read", Sel: map[string]string{"group": "/"}},
+			[]string{"demo.note.created.group", "demo.note.created.group.>"},
+		},
+		{
+			"the read capability, a path",
+			authz.Item{Cap: "demo:read", Sel: map[string]string{"group": "/work"}},
+			[]string{"demo.note.created.group.work", "demo.note.created.group.work.>"},
+		},
+		{
+			"the read capability, 2 segments",
+			authz.Item{Cap: "demo:read", Sel: map[string]string{"group": "/Work Notes/2026_Q1"}},
+			[]string{"demo.note.created.group.Work%20Notes.2026%5FQ1", "demo.note.created.group.Work%20Notes.2026%5FQ1.>"},
+		},
+		{
+			"another selector at the root",
+			authz.Item{Cap: "demo:read", Sel: map[string]string{"folder": "/"}},
+			[]string{"demo.note.created.group", "demo.note.created.group.>"},
+		},
+		{
+			"the publish capability",
+			authz.Item{Cap: "demo:publish"},
+			[]string{"demo.note.published"},
+		},
+		{
+			"another selector at a path",
+			authz.Item{Cap: "demo:read", Sel: map[string]string{"folder": "/work"}},
+			[]string{},
+		},
+		{
+			"the publish capability with a selector of the app",
+			authz.Item{Cap: "demo:publish", Sel: map[string]string{"group": "/work"}},
+			[]string{},
+		},
+		{
+			"a capability that no event has",
+			authz.Item{Cap: "demo:write"},
+			[]string{},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := events.ReadFilters("demo", "group", tc.path)
+			got, err := events.ReadFilters(specs, tc.item)
 			if err != nil {
 				t.Fatalf("ReadFilters: %v", err)
 			}
-			if len(got) != len(tc.want) {
+			if got == nil {
+				t.Fatal("the filters are nil, want an empty list when no event matches")
+			}
+			if !slices.Equal(got, tc.want) {
 				t.Fatalf("the filters = %v, want %v", got, tc.want)
 			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Errorf("filter %d = %q, want %q", i, got[i], tc.want[i])
-				}
-				if err := events.ValidFilter(got[i]); err != nil {
-					t.Errorf("the filter %q is invalid: %v", got[i], err)
+			for _, filter := range got {
+				if err := events.ValidFilter(filter); err != nil {
+					t.Errorf("the filter %q is invalid: %v", filter, err)
 				}
 			}
 		})
 	}
 }
 
-// TestReadFiltersChecks checks that a bad app, selector or path is an error.
-func TestReadFiltersChecks(t *testing.T) {
-	if _, err := events.ReadFilters("Demo", "group", "/work"); err == nil {
-		t.Error("ReadFilters took the app Demo")
-	}
-	if _, err := events.ReadFilters("demo", "Group", "/work"); err == nil {
-		t.Error("ReadFilters took the selector Group")
-	}
-	_, err := events.ReadFilters("demo", "group", "work")
-	if err == nil {
-		t.Fatal("ReadFilters took the path work")
-	}
-	var pathErr *authz.PathError
-	if !errors.As(err, &pathErr) {
-		t.Errorf("the error %v does not wrap *authz.PathError", err)
-	}
-}
-
-// TestReadFiltersMatch checks that the filters of a path take the events of the
-// path and of what is below it, and no other event.
+// TestReadFiltersMatch checks the topics that 1 item's filters take: the events of
+// the item's capability at its path and below it, and no other event.
 func TestReadFiltersMatch(t *testing.T) {
-	filters, err := events.ReadFilters("demo", "group", "/work")
+	specs := []events.Spec{spec, noSelector}
+	takes := func(t *testing.T, filters []string, topic string) bool {
+		t.Helper()
+		for _, filter := range filters {
+			if events.Match(filter, topic) {
+				return true
+			}
+		}
+		return false
+	}
+
+	work, err := events.ReadFilters(specs, authz.Item{Cap: "demo:read", Sel: map[string]string{"group": "/work"}})
 	if err != nil {
 		t.Fatalf("ReadFilters: %v", err)
 	}
@@ -388,19 +486,68 @@ func TestReadFiltersMatch(t *testing.T) {
 		want  bool
 	}{
 		{"demo.note.created.group.work", true},
-		{"demo.note.created.group.work.2026", true},
+		{"demo.note.created.group.work.a", true},
 		{"demo.note.created.group.workshop", false},
+		{"demo.note.created.group", false},
+		{"demo.note.published", false},
 		{"notes.note.created.group.work", false},
 	} {
-		got := false
-		for _, filter := range filters {
-			if events.Match(filter, tc.topic) {
-				got = true
-			}
-		}
-		if got != tc.want {
+		if got := takes(t, work, tc.topic); got != tc.want {
 			t.Errorf("the filters of /work take %q = %v, want %v", tc.topic, got, tc.want)
 		}
+	}
+
+	// The root item of the read capability never takes the publish event, which
+	// another capability reads.
+	root, err := events.ReadFilters(specs, authz.Item{Cap: "demo:read"})
+	if err != nil {
+		t.Fatalf("ReadFilters: %v", err)
+	}
+	if takes(t, root, noSelector.Topic) {
+		t.Errorf("the filters of the read capability take %q, and demo:publish reads it", noSelector.Topic)
+	}
+	if !takes(t, root, spec.Topic) {
+		t.Errorf("the filters of the read capability do not take %q", spec.Topic)
+	}
+
+	// The publish item takes exactly its own event, and nothing below it.
+	publish, err := events.ReadFilters(specs, authz.Item{Cap: "demo:publish"})
+	if err != nil {
+		t.Fatalf("ReadFilters: %v", err)
+	}
+	if want := []string{"demo.note.published"}; !slices.Equal(publish, want) {
+		t.Errorf("the filters of demo:publish = %v, want %v", publish, want)
+	}
+	if takes(t, publish, "demo.note.published.work") {
+		t.Error("the filter of an event that carries no selector takes a path below its topic")
+	}
+}
+
+// TestReadFiltersChecks checks that a spec of the item's capability and a path
+// that is no path are errors, and that a spec of another capability is not read.
+func TestReadFiltersChecks(t *testing.T) {
+	badSpec := spec
+	badSpec.Topic = "demo.note.created"
+	if _, err := events.ReadFilters([]events.Spec{badSpec}, authz.Item{Cap: "demo:read"}); err == nil {
+		t.Error("ReadFilters took a spec whose topic lacks the event's selector")
+	}
+
+	_, err := events.ReadFilters([]events.Spec{spec}, authz.Item{Cap: "demo:read", Sel: map[string]string{"group": "work"}})
+	if err == nil {
+		t.Fatal("ReadFilters took the path work")
+	}
+	var pathErr *authz.PathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("the error %v does not wrap *authz.PathError", err)
+	}
+
+	// A spec of another capability is not 1 that the item reads, so it is not
+	// checked.
+	badOther := badSpec
+	badOther.ReadPermission = "demo:publish"
+	got, err := events.ReadFilters([]events.Spec{badOther}, authz.Item{Cap: "demo:read"})
+	if err != nil || len(got) != 0 {
+		t.Errorf("ReadFilters with a bad spec of another capability = %v, %v, want no filter and no error", got, err)
 	}
 }
 
@@ -540,7 +687,9 @@ func TestParseFails(t *testing.T) {
 		data string
 		want string
 	}{
-		{"an unknown member", strings.Replace(good, `"author":"local"`, `"author":"local","extra":1`, 1), "unknown field"},
+		{"an unknown member", strings.Replace(good, `"author":"local"`, `"author":"local","extra":1`, 1), `unknown object member name "extra"`},
+		{"a member in capitals", strings.Replace(good, `"author":"local"`, `"AUTHOR":"local"`, 1), `unknown object member name "AUTHOR"`},
+		{"a duplicate member", strings.Replace(good, `"subject":"n-1"`, `"subject":"n-1","id":"018bcfe5-6800-7607-8809-0a0b0c0d0e0f"`, 1), `duplicate object member name "id"`},
 		{"no id", strings.Replace(good, `"id":"018bcfe5-6800-7607-8809-0a0b0c0d0e0f",`, "", 1), `the member "id" is required`},
 		{"no source", strings.Replace(good, `"source":"/demo",`, "", 1), `the member "source" is required`},
 		{"no type", strings.Replace(good, `"type":"org.frostyard.demo.note.created",`, "", 1), `the member "type" is required`},
@@ -549,7 +698,7 @@ func TestParseFails(t *testing.T) {
 		{"no author", strings.Replace(good, `,"author":"local"`, "", 1), `the member "author" is required`},
 		{"another version", strings.Replace(good, `"specversion":"1.0"`, `"specversion":"0.3"`, 1), "must be \"1.0\""},
 		{"a bad time", strings.Replace(good, `"2023-11-14T22:13:20Z"`, `"yesterday"`, 1), "no RFC 3339 time"},
-		{"data after the object", good + "{}", "the data after the JSON object"},
+		{"data after the object", good + "{}", "after top-level value"},
 		{"no object", "[]", "read the envelope"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

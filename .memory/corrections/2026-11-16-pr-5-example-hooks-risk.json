@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "examples/notes-lite",
+  "correction": "The example's permission hooks are an authorization surface, so examples/notes-lite/notes.go is an L2 risk path, and every example file with an Authorize hook must match an L1 or L2 entry.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 6",
+  "promoted_to": "TestExampleHooksAreRiskPaths, TestHookRiskProblems (internal/workflowcheck)"
+}

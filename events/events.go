@@ -11,11 +11,10 @@
 package events
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +32,11 @@ const SpecVersion = "1.0"
 // that 1 event can never block the relay.
 const MaxTopicLen = 1024
 
+// MaxEnvelopeLen is the longest envelope, in bytes: well below the 64 KiB
+// payload that lodge's broker takes, which also carries the message's headers,
+// so that 1 event can never be a row that no transport accepts.
+const MaxEnvelopeLen = 32 << 10
+
 // upperHex is the upper-case hex digit of each 4-bit value, which
 // EncodeSegment writes.
 const upperHex = "0123456789ABCDEF"
@@ -44,8 +48,9 @@ var ErrNoCaller = errors.New("events: no caller in the context, so the event has
 var (
 	// appPattern is the pattern of an app's id.
 	appPattern = regexp.MustCompile(`^[a-z][a-z0-9]{0,15}$`)
-	// selectorPattern is the pattern of a selector's name.
-	selectorPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	// uuidPattern is the text form of a UUID: 32 lower-case hex digits in 5
+	// groups, 8-4-4-4-12.
+	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	// typePrefix is the start of every event type, before the app's id.
 	typePrefix = "org.frostyard."
 )
@@ -133,7 +138,7 @@ func NewAt(ctx context.Context, spec Spec, subject, path string, now time.Time, 
 	if err != nil {
 		return Event{}, fmt.Errorf("events: %s: %w", typeName(spec), err)
 	}
-	return Event{
+	event := Event{
 		ID:       id,
 		Source:   "/" + spec.App,
 		Type:     spec.Type,
@@ -142,7 +147,11 @@ func NewAt(ctx context.Context, spec Spec, subject, path string, now time.Time, 
 		Author:   caller.Principal,
 		Selector: canonical,
 		Topic:    topic,
-	}, nil
+	}
+	if err := event.Validate(); err != nil {
+		return Event{}, err
+	}
+	return event, nil
 }
 
 // TopicOf returns the topic of 1 event and the canonical form of its path: the
@@ -194,34 +203,66 @@ func EncodeSegment(segment string) string {
 }
 
 // ReadFilters returns the broker filters that a consumer subscribes to, to read
-// the events of app at path of the selector: every event of the app at the root
-// path, and 2 filters otherwise, for the path and for what is below it.
+// the events that 1 grant item's capability covers: 1 filter for each event spec
+// whose read permission is the item's capability, in the order of the specs.
 //
-// It checks the app's id, the selector's name and the path.
-func ReadFilters(app, selector, path string) ([]string, error) {
-	switch {
-	case !appPattern.MatchString(app):
-		return nil, fmt.Errorf("events: the app %q must match %s", app, appPattern)
-	case !selectorPattern.MatchString(selector):
-		return nil, fmt.Errorf("events: the selector %q must match %s", selector, selectorPattern)
+// An event spec with no selector carries no path, so its filter is its topic
+// alone. A spec with a selector reads the item's path for that selector: the
+// root path gives the spec's topic and the events below it, and any other path
+// adds its 1 segment for each segment of the path. 1 item that names another
+// selector at a path that is not the root covers no event of that spec, because
+// the event carries no value of that selector, which is the root.
+//
+// A capability that no spec has gives an empty, non-nil list. Each spec that the
+// item's capability covers is checked, and a path that is no path is an error.
+func ReadFilters(specs []Spec, item authz.Item) ([]string, error) {
+	filters := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		if spec.ReadPermission != item.Cap {
+			continue
+		}
+		if err := checkSpec(spec); err != nil {
+			return nil, err
+		}
+		if !coversAnySelector(spec, item) {
+			continue
+		}
+		if spec.Selector == "" {
+			filters = append(filters, spec.Topic)
+			continue
+		}
+		path := item.Sel[spec.Selector]
+		if path == "" || path == authz.Root {
+			filters = append(filters, spec.Topic, spec.Topic+".>")
+			continue
+		}
+		cleaned, err := authz.CleanPath(path)
+		if err != nil {
+			return nil, fmt.Errorf("events: %s: the read filters: %w", typeName(spec), err)
+		}
+		var out strings.Builder
+		out.WriteString(spec.Topic)
+		for segment := range strings.SplitSeq(cleaned[1:], "/") {
+			out.WriteByte('.')
+			out.WriteString(EncodeSegment(segment))
+		}
+		filter := out.String()
+		filters = append(filters, filter, filter+".>")
 	}
-	if path == "" || path == authz.Root {
-		return []string{app + ".>"}, nil
+	return filters, nil
+}
+
+// coversAnySelector reports whether 1 grant item covers the events of 1 spec: an
+// item that names another selector at a path that is not the root covers no
+// event of that spec, because the event carries no value of that selector.
+func coversAnySelector(spec Spec, item authz.Item) bool {
+	for name, path := range item.Sel {
+		if name == spec.Selector || path == "" || path == authz.Root {
+			continue
+		}
+		return false
 	}
-	cleaned, err := authz.CleanPath(path)
-	if err != nil {
-		return nil, fmt.Errorf("events: the read filters of %s: %w", app, err)
-	}
-	var out strings.Builder
-	out.WriteString(app)
-	out.WriteString(".*.*.")
-	out.WriteString(selector)
-	for segment := range strings.SplitSeq(cleaned[1:], "/") {
-		out.WriteByte('.')
-		out.WriteString(EncodeSegment(segment))
-	}
-	filter := out.String()
-	return []string{filter, filter + ".>"}, nil
+	return true
 }
 
 // Match reports whether 1 broker filter takes 1 topic: the 2 split on ".", "*"
@@ -287,6 +328,44 @@ type envelope struct {
 	Selector string `json:"selector,omitempty"`
 }
 
+// Validate checks 1 event before its change commits, and before a transport
+// publishes it: every required member is there, the topic and the envelope are
+// within their limits, and the id is a lower-case UUID.
+//
+// A writer of the change's transaction calls it, so an event that no transport
+// could take fails inside the transaction, and no row blocks the relay.
+func (e Event) Validate() error {
+	name := typeName(Spec{Type: e.Type})
+	switch {
+	case e.ID == "":
+		return fmt.Errorf("events: %s: the id is required", name)
+	case !uuidPattern.MatchString(e.ID):
+		return fmt.Errorf("events: %s: the id %q is not a lower-case UUID", name, e.ID)
+	case e.Source == "":
+		return fmt.Errorf("events: %s: the source is required", name)
+	case e.Type == "":
+		return fmt.Errorf("events: %s: the type is required", name)
+	case e.Subject == "":
+		return fmt.Errorf("events: %s: the subject (the object's id) is required", name)
+	case e.Author == "":
+		return fmt.Errorf("events: %s: the author is required", name)
+	case e.Time.IsZero():
+		return fmt.Errorf("events: %s: the time is required", name)
+	case e.Topic == "":
+		return fmt.Errorf("events: %s: the topic is required", name)
+	case len(e.Topic) > MaxTopicLen:
+		return fmt.Errorf("events: %s: the topic is %d bytes, and the limit is %d", name, len(e.Topic), MaxTopicLen)
+	}
+	data, err := e.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	if len(data) > MaxEnvelopeLen {
+		return fmt.Errorf("events: %s: the envelope is %d bytes, and the limit is %d", name, len(data), MaxEnvelopeLen)
+	}
+	return nil
+}
+
 // MarshalJSON implements json.Marshaler: the event's CloudEvents structured
 // JSON form, with no data.
 func (e Event) MarshalJSON() ([]byte, error) {
@@ -308,18 +387,14 @@ func (e Event) MarshalJSON() ([]byte, error) {
 
 // Parse reads 1 event from its CloudEvents structured JSON form.
 //
-// It is strict: an unknown member, a member that the form requires and the
-// data lacks, a specversion other than SpecVersion and a bad time are errors.
-// The event's topic is not in the form, so it is "".
+// It is strict: an unknown member, a member that the form requires and the data
+// lacks, a duplicate member, a specversion other than SpecVersion and a bad time
+// are errors, and a member's name is case-sensitive. The event's topic is not in
+// the form, so it is "".
 func Parse(data []byte) (Event, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var raw envelope
-	if err := decoder.Decode(&raw); err != nil {
+	if err := json.Unmarshal(data, &raw, json.RejectUnknownMembers(true)); err != nil {
 		return Event{}, fmt.Errorf("events: read the envelope: %w", err)
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return Event{}, errors.New("events: read the envelope: the data after the JSON object is not allowed")
 	}
 	if raw.SpecVersion != SpecVersion {
 		return Event{}, fmt.Errorf("events: read the envelope: specversion is %q, and it must be %q", raw.SpecVersion, SpecVersion)

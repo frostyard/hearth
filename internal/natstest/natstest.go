@@ -64,13 +64,28 @@ type Server struct {
 	hub *nats.Conn
 	// js is the hub's JetStream client.
 	js jetstream.JetStream
-	// mu guards the hub's secret and the app's account, which Check reads on
-	// the server's goroutines.
+	// mu guards the hub's secret, the app's account, which Check reads on the
+	// server's goroutines, and the socket's connections.
 	mu sync.Mutex
 	// secret is the token that names the hub's user.
 	secret string
 	// acc is the app's account.
 	acc *server.Account
+	// links are the live connections of the socket, which Drop closes.
+	links map[*link]bool
+	// held is set while the socket holds each new connection unspliced.
+	held bool
+	// waiting are the connections that Hold kept waiting, until Release.
+	waiting []*link
+}
+
+// link is 1 connection of the socket, and the server's own connection that it is
+// spliced to.
+type link struct {
+	// client is the connection of the socket.
+	client net.Conn
+	// server is the server's connection.
+	server net.Conn
 }
 
 // Check admits 1 connection: the hub's token is the hub's user, and every other
@@ -108,7 +123,7 @@ func (s *Server) Check(c server.ClientAuthentication) bool {
 // store when the test ends.
 func Start(t testing.TB, app string) *Server {
 	t.Helper()
-	s := &Server{app: app}
+	s := &Server{app: app, links: map[*link]bool{}}
 	srv, err := server.NewServer(&server.Options{
 		ServerName: "natstest",
 		// The app reaches the server on a Unix socket whose connections are
@@ -240,7 +255,8 @@ func (s *Server) stream(t testing.TB) jetstream.Stream {
 }
 
 // accept splices each connection of the socket to a connection of the server
-// itself: the server has no listener of its own.
+// itself: the server has no listener of its own. A connection that Hold keeps
+// waits, unspliced, until Release.
 func (s *Server) accept(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
@@ -252,25 +268,75 @@ func (s *Server) accept(listener net.Listener) {
 			_ = conn.Close()
 			return
 		}
-		go splice(conn, serverConn)
+		l := &link{client: conn, server: serverConn}
+		s.mu.Lock()
+		if s.held {
+			s.waiting = append(s.waiting, l)
+			s.mu.Unlock()
+			continue
+		}
+		s.links[l] = true
+		s.mu.Unlock()
+		go s.splice(l)
 	}
 }
 
-// splice copies each direction of 2 connections until 1 of them ends, and then
-// closes both.
-func splice(a, b net.Conn) {
+// splice copies each direction of 1 link until 1 of them ends, and then closes
+// both.
+func (s *Server) splice(l *link) {
 	go func() {
-		_, _ = io.Copy(a, b)
-		closeBoth(a, b)
+		_, _ = io.Copy(l.client, l.server)
+		s.forget(l)
 	}()
-	_, _ = io.Copy(b, a)
-	closeBoth(a, b)
+	_, _ = io.Copy(l.server, l.client)
+	s.forget(l)
 }
 
-// closeBoth closes 2 connections.
-func closeBoth(a, b net.Conn) {
-	_ = a.Close()
-	_ = b.Close()
+// forget closes both connections of 1 link, and forgets the link.
+func (s *Server) forget(l *link) {
+	_ = l.client.Close()
+	_ = l.server.Close()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.links, l)
+}
+
+// Drop closes every live connection of the socket, as a broker that restarts
+// does. The client reconnects.
+func (s *Server) Drop() {
+	s.mu.Lock()
+	links := make([]*link, 0, len(s.links))
+	for l := range s.links {
+		links = append(links, l)
+	}
+	s.mu.Unlock()
+	for _, l := range links {
+		s.forget(l)
+	}
+}
+
+// Hold makes each new connection of the socket wait, unspliced, until Release:
+// the client then reads no greeting, and it tries again.
+func (s *Server) Hold() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.held = true
+}
+
+// Release splices the connections that Hold kept waiting, and each new 1 after
+// it.
+func (s *Server) Release() {
+	s.mu.Lock()
+	s.held = false
+	waiting := s.waiting
+	s.waiting = nil
+	for _, l := range waiting {
+		s.links[l] = true
+	}
+	s.mu.Unlock()
+	for _, l := range waiting {
+		go s.splice(l)
+	}
 }
 
 // secret returns 1 token of 32 random bytes.

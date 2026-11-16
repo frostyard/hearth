@@ -43,6 +43,9 @@ type Options struct {
 	// Timeout is how long Publish waits for JetStream's acknowledgement when
 	// the context has no deadline. 0 means 10 s.
 	Timeout time.Duration
+	// ReconnectWait is how long the connection waits between 2 attempts to
+	// reconnect after the broker ends it. 0 means the client's own default.
+	ReconnectWait time.Duration
 	// Logger gets the connection's asynchronous errors, such as a permissions
 	// violation, and its disconnects and reconnects. nil means
 	// slog.Default().
@@ -109,6 +112,11 @@ func Dial(opts Options) (*Transport, error) {
 			log.Info("the broker's connection is back", "url", conn.ConnectedUrl())
 		}),
 	}
+	if opts.ReconnectWait > 0 {
+		// A given wait is exact: the jitter of the client would make it a
+		// range, and a test could not tell when the next attempt comes.
+		natsOpts = append(natsOpts, nats.ReconnectWait(opts.ReconnectWait), nats.ReconnectJitter(0, 0))
+	}
 	if opts.Name != "" {
 		natsOpts = append(natsOpts, nats.Name(opts.Name))
 	}
@@ -133,11 +141,8 @@ func Dial(opts Options) (*Transport, error) {
 // acknowledged the message. A duplicate acknowledgement is a success, because the
 // stream holds the event 1 time.
 func (t *Transport) Publish(ctx context.Context, e events.Event) error {
-	if e.ID == "" {
-		return errors.New("events/broker: the event has no id")
-	}
-	if e.Topic == "" {
-		return fmt.Errorf("events/broker: the event %s has no topic", e.ID)
+	if err := e.Validate(); err != nil {
+		return err
 	}
 	data, err := e.MarshalJSON()
 	if err != nil {
