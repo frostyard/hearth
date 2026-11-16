@@ -75,6 +75,8 @@ type Server struct {
 	links map[*link]bool
 	// held is set while the socket holds each new connection unspliced.
 	held bool
+	// closed is set by the cleanup: no connection is taken after it.
+	closed bool
 	// waiting are the connections that Hold kept waiting, until Release.
 	waiting []*link
 }
@@ -212,7 +214,37 @@ func Start(t testing.TB, app string) *Server {
 		}
 	})
 	go s.accept(listener)
+	// The connections of the socket close first, so that a test that ends after
+	// Hold, or with a live connection, leaks nothing.
+	t.Cleanup(s.closeLinks)
 	return s
+}
+
+// closeLinks closes both ends of every live connection of the socket, and of
+// every connection that Hold kept waiting. Release after it is harmless.
+func (s *Server) closeLinks() {
+	s.mu.Lock()
+	links := make([]*link, 0, len(s.links)+len(s.waiting))
+	for l := range s.links {
+		links = append(links, l)
+	}
+	links = append(links, s.waiting...)
+	s.links = map[*link]bool{}
+	s.waiting = nil
+	s.closed = true
+	s.mu.Unlock()
+	for _, l := range links {
+		s.forget(l)
+	}
+}
+
+// OpenConns returns how many connections of the socket the server holds: the
+// ones it spliced, and the ones that Hold keeps waiting. It is 1 test's view of
+// the server's state, and it is 0 once the test's cleanup has run.
+func (s *Server) OpenConns() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.links) + len(s.waiting)
 }
 
 // Count returns how many messages the app's stream holds.
@@ -256,20 +288,21 @@ func (s *Server) stream(t testing.TB) jetstream.Stream {
 
 // accept splices each connection of the socket to a connection of the server
 // itself: the server has no listener of its own. A connection that Hold keeps
-// waits, unspliced, until Release.
+// waits, unspliced, until Release, and the server gives it no connection before
+// then: a held connection is 1 socket of the test, and nothing of the server.
 func (s *Server) accept(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		serverConn, err := s.srv.InProcessConn()
-		if err != nil {
+		l := &link{client: conn}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
 			_ = conn.Close()
 			return
 		}
-		l := &link{client: conn, server: serverConn}
-		s.mu.Lock()
 		if s.held {
 			s.waiting = append(s.waiting, l)
 			s.mu.Unlock()
@@ -277,28 +310,58 @@ func (s *Server) accept(listener net.Listener) {
 		}
 		s.links[l] = true
 		s.mu.Unlock()
-		go s.splice(l)
+		s.start(l)
 	}
+}
+
+// start splices 1 connection of the socket to a connection of the server itself.
+// A connection that the server cannot take is closed and forgotten.
+func (s *Server) start(l *link) {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		s.forget(l)
+		return
+	}
+	serverConn, err := s.srv.InProcessConn()
+	if err != nil {
+		s.forget(l)
+		return
+	}
+	s.mu.Lock()
+	l.server = serverConn
+	s.mu.Unlock()
+	go s.splice(l)
 }
 
 // splice copies each direction of 1 link until 1 of them ends, and then closes
 // both.
 func (s *Server) splice(l *link) {
+	s.mu.Lock()
+	serverConn := l.server
+	s.mu.Unlock()
 	go func() {
-		_, _ = io.Copy(l.client, l.server)
+		_, _ = io.Copy(l.client, serverConn)
 		s.forget(l)
 	}()
-	_, _ = io.Copy(l.server, l.client)
+	_, _ = io.Copy(serverConn, l.client)
 	s.forget(l)
 }
 
-// forget closes both connections of 1 link, and forgets the link.
+// forget closes both connections of 1 link, and forgets the link. A link that
+// was never spliced has no connection of the server, and it closes its socket
+// only.
 func (s *Server) forget(l *link) {
-	_ = l.client.Close()
-	_ = l.server.Close()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.links, l)
+	serverConn := l.server
+	l.server = nil
+	s.mu.Unlock()
+	_ = l.client.Close()
+	if serverConn != nil {
+		_ = serverConn.Close()
+	}
 }
 
 // Drop closes every live connection of the socket, as a broker that restarts
@@ -324,7 +387,7 @@ func (s *Server) Hold() {
 }
 
 // Release splices the connections that Hold kept waiting, and each new 1 after
-// it.
+// it. It is harmless after the test's cleanup, which closes those connections.
 func (s *Server) Release() {
 	s.mu.Lock()
 	s.held = false
@@ -335,7 +398,7 @@ func (s *Server) Release() {
 	}
 	s.mu.Unlock()
 	for _, l := range waiting {
-		go s.splice(l)
+		s.start(l)
 	}
 }
 

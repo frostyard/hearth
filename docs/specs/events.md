@@ -39,7 +39,7 @@ An event is 1 JSON object, CloudEvents 1.0 in its structured JSON form, with no
 | `events.New(ctx, spec, subject, path)` | builds 1 event, with the time and the id of now |
 | `events.NewAt(ctx, spec, subject, path, now, random)` | builds 1 event with a given time and random source |
 | `events.ErrNoCaller` | the error that a context with no caller gives |
-| `Event.Validate()` | every required member set, the topic at most `MaxTopicLen`, the id a UUID, and the envelope at most `MaxEnvelopeLen` |
+| `Event.Validate()` | every required member set, the id a UUID, the topic a literal NATS subject of at most `MaxTopicLen` bytes, the envelope at most `MaxEnvelopeLen` bytes, and the envelope reads back with `Parse` as the same event |
 
 ### The topic
 

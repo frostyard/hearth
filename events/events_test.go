@@ -335,7 +335,13 @@ func TestValidate(t *testing.T) {
 		{"no time", func(e *events.Event) { e.Time = time.Time{} }, "the time is required"},
 		{"no topic", func(e *events.Event) { e.Topic = "" }, "the topic is required"},
 		{"a topic that is too long", func(e *events.Event) { e.Topic = "demo." + strings.Repeat("a", events.MaxTopicLen) }, "the topic is"},
+		{"a topic with a space", func(e *events.Event) { e.Topic = "notes.bad topic" }, "no literal subject"},
+		{"a topic with no token", func(e *events.Event) { e.Topic = "notes..x" }, "no literal subject"},
+		{"a topic with a star", func(e *events.Event) { e.Topic = "notes.*" }, "no literal subject"},
+		{"a topic with a greater than", func(e *events.Event) { e.Topic = "notes.>" }, "no literal subject"},
+		{"a topic with a tab", func(e *events.Event) { e.Topic = "notes.a\tb" }, "no literal subject"},
 		{"an envelope that is too long", func(e *events.Event) { e.Subject = strings.Repeat("a", events.MaxEnvelopeLen) }, "the envelope is"},
+		{"a time after the year 9999", func(e *events.Event) { e.Time = farFuture() }, "does not read back"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			event := valid(t)
@@ -346,6 +352,63 @@ func TestValidate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("the error = %q, want it to hold %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// farFuture is 1 time that RFC 3339 cannot write: its year has 5 digits, so its
+// text is no RFC 3339 time.
+func farFuture() time.Time {
+	return time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+}
+
+// TestNewAtFarTime checks that NewAt refuses 1 time whose envelope no reader can
+// parse, so that the outbox never holds that row.
+func TestNewAtFarTime(t *testing.T) {
+	_, err := events.NewAt(local(), spec, "n-1", "/work", farFuture(), fixedRandom())
+	if err == nil {
+		t.Fatal("NewAt took a time in the year 10000")
+	}
+	if !strings.Contains(err.Error(), "does not read back") {
+		t.Errorf("the error = %q, want it to name the envelope that does not read back", err)
+	}
+}
+
+// TestParseRoundTripOfValidEvents checks that each valid event reads back: the
+// envelope that Validate accepts is the envelope that Parse reads.
+func TestParseRoundTripOfValidEvents(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		spec    events.Spec
+		subject string
+		path    string
+	}{
+		{"the root path", spec, "n-1", "/"},
+		{"an absent path", spec, "n-1", ""},
+		{"2 segments", spec, "n-1", "/Work Notes/2026_Q1"},
+		{"no selector", noSelector, "n-1", ""},
+		{"a non-ASCII subject", spec, "K\u00e4se-\u00e9", "/work"},
+		{"a non-ASCII selector path", spec, "n-1", "/Caf\u00e9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			event, err := events.NewAt(local(), tc.spec, tc.subject, tc.path, fixed, fixedRandom())
+			if err != nil {
+				t.Fatalf("NewAt: %v", err)
+			}
+			data, err := event.MarshalJSON()
+			if err != nil {
+				t.Fatalf("MarshalJSON: %v", err)
+			}
+			parsed, err := events.Parse(data)
+			if err != nil {
+				t.Fatalf("Parse(MarshalJSON(e)): %v", err)
+			}
+			if parsed.Subject != event.Subject || parsed.Selector != event.Selector || parsed.ID != event.ID {
+				t.Errorf("the event read back = %+v, want %+v", parsed, event)
+			}
+			if !parsed.Time.Equal(event.Time) {
+				t.Errorf("the time read back = %v, want %v", parsed.Time, event.Time)
 			}
 		})
 	}

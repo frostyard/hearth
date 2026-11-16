@@ -355,6 +355,8 @@ func (e Event) Validate() error {
 		return fmt.Errorf("events: %s: the topic is required", name)
 	case len(e.Topic) > MaxTopicLen:
 		return fmt.Errorf("events: %s: the topic is %d bytes, and the limit is %d", name, len(e.Topic), MaxTopicLen)
+	case !literalSubject(e.Topic):
+		return fmt.Errorf("events: %s: the topic %q is no literal subject of the broker", name, e.Topic)
 	}
 	data, err := e.MarshalJSON()
 	if err != nil {
@@ -363,7 +365,48 @@ func (e Event) Validate() error {
 	if len(data) > MaxEnvelopeLen {
 		return fmt.Errorf("events: %s: the envelope is %d bytes, and the limit is %d", name, len(data), MaxEnvelopeLen)
 	}
+	// The envelope must read back as the same event: 1 member that no reader
+	// can parse, such as a time outside RFC 3339's range, would be a row that
+	// the relay publishes and no consumer reads.
+	parsed, err := Parse(data)
+	if err != nil {
+		return fmt.Errorf("events: %s: the envelope does not read back: %w", name, err)
+	}
+	if !sameMembers(e, parsed) {
+		return fmt.Errorf("events: %s: the envelope does not read back as the event", name)
+	}
 	return nil
+}
+
+// literalSubject reports whether 1 topic is 1 literal subject of the broker: no
+// token is empty, and no byte of a token is a space, a control byte, "*" or ">",
+// which NATS refuses or reads as 1 pattern.
+func literalSubject(topic string) bool {
+	for token := range strings.SplitSeq(topic, ".") {
+		if token == "" {
+			return false
+		}
+		for i := range len(token) {
+			b := token[i]
+			if b < 0x21 || b == 0x7f || b == '*' || b == '>' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// sameMembers reports whether 2 events hold the same members, except the topic,
+// which the envelope does not carry. 2 times are the same when they are the same
+// instant, whatever their location.
+func sameMembers(a, b Event) bool {
+	return a.ID == b.ID &&
+		a.Source == b.Source &&
+		a.Type == b.Type &&
+		a.Subject == b.Subject &&
+		a.Author == b.Author &&
+		a.Selector == b.Selector &&
+		a.Time.Equal(b.Time)
 }
 
 // MarshalJSON implements json.Marshaler: the event's CloudEvents structured

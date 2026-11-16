@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events/broker",
+  "correction": "The reconnect test cancels a drain while its publish waits in the client's reconnect buffer (Transport.Buffered > 0), not before the publish starts: nats.go checks the context before it sends, so an early cancel proves no in-flight cancellation. The stream then holds each Nats-Msg-Id 1 time.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head 6660d95, finding 2",
+  "promoted_to": "TestReconnect (events/broker)"
+}

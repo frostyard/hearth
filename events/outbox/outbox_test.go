@@ -198,6 +198,10 @@ func TestWriteChecksInvalid(t *testing.T) {
 	noAuthor.Author = ""
 	longEnvelope := good
 	longEnvelope.Subject = strings.Repeat("a", events.MaxEnvelopeLen)
+	badTopic := good
+	badTopic.Topic = "notes.bad topic"
+	farTime := good
+	farTime.Time = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
 		name  string
 		event events.Event
@@ -205,6 +209,8 @@ func TestWriteChecksInvalid(t *testing.T) {
 	}{
 		{"no author", noAuthor, "the author is required"},
 		{"an envelope that is too long", longEnvelope, "the envelope is"},
+		{"a topic that is no literal subject", badTopic, "no literal subject"},
+		{"a time after the year 9999", farTime, "does not read back"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := db.BeginTx(ctx, nil)
