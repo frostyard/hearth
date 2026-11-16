@@ -22,6 +22,7 @@ Docs are split by the question they answer:
 - [0007 — Generate MCP tools from an app's agent RPCs](adr/0007-generate-mcp-tools-from-agent-rpcs.md)
 - [0008 — Publish thin events through a transactional outbox](adr/0008-publish-thin-events-through-a-transactional-outbox.md)
 - [0009 — Keep the example app a module of its own, built from its README](adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)
+- [0010 — Serve the Connect route with a go.mod-pinned generator](adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)
 
 ### Org-wide decisions
 
@@ -39,6 +40,7 @@ Docs are split by the question they answer:
 - [Permissions](specs/permissions.md)
 - [MCP tools](specs/mcp-tools.md)
 - [Events](specs/events.md)
+- [The Connect route](specs/connect.md)
 
 ### Plans
 

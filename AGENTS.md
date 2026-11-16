@@ -27,8 +27,10 @@ site. Phase 2 is built: the permission runtime, the permission plugin, the
 lodge adapter, the MCP plugin and its server, and the demo app of
 `internal/e2e`. Phase 3 is built: the events plugin, the outbox and its relay,
 the in-process and NATS transports, and the example app of
-`examples/notes-lite`. The `Connect` route is phase 4 of the
-[roadmap](docs/plans/0001-roadmap.md); do not build it early.
+`examples/notes-lite`. Phase 4 is built: the `Connect` route of an app's API on
+its private and lodge sockets, with `protoc-gen-connect-go` pinned by a `tool`
+directive of `go.mod`
+([ADR-0010](docs/adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)).
 
 ## Map
 
@@ -54,6 +56,9 @@ the in-process and NATS transports, and the example app of
 - `lodge/`: the adapter to lodge: the peer check of the app's lodge socket, the
   `Lodge-Principal` and `Lodge-Grant` headers, and the local user of the
   private socket.
+- `connectserver/`: an app's API over Connect: the admission of its 2 sockets,
+  the error mapping of the permission runtime and the server
+  ([specs/connect.md](docs/specs/connect.md)).
 - `cmd/protoc-gen-hearth-mcp` and `mcpserver/`: the tools of an app's agent RPCs,
   with the proto3 JSON schema and the effect's hints
   ([specs/mcp-tools.md](docs/specs/mcp-tools.md)), and the server that serves
@@ -72,9 +77,9 @@ the in-process and NATS transports, and the example app of
   gate ([ADR-0009](docs/adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)).
 - `testdata/e2e/`: a demo app's proto, its buf template and its committed
   manifest.
-- `internal/e2e/`: the demo app: its generated code (`internal/e2e/gen/`), its
-  hooks on an in-memory store, and the tests that prove the refusal, the move
-  and the stdio tools.
+- `internal/e2e/`: the demo app: its generated code (`internal/e2e/gen/`,
+  `demov1connect/` included), its hooks on an in-memory store, and the tests that
+  prove the refusal, the move, the stdio tools and the Connect route.
 - `internal/workflowcheck`: the repository's own rules as Go tests: the
   workflows, the risk-path list, the corrections inbox, the Dependabot entries
   and the buf configuration.
@@ -123,9 +128,13 @@ the in-process and NATS transports, and the example app of
   the tree, and `make gen-check` fails on a difference without reading git: it
   regenerates into a temporary directory and compares the 2 trees.
 - **No remote buf plugin runs.** Every plugin is a local binary that
-  `mise.lock` pins, or `go run` of this repository's own command (the
-  example's `go run github.com/frostyard/hearth/cmd/...` is that, through its
-  `replace`).
+  `mise.lock` pins, or `go run` of a tool that a `go.mod` `tool` directive pins:
+  this repository's own commands (the example's
+  `go run github.com/frostyard/hearth/cmd/...` is that, through its `replace`),
+  and `protoc-gen-connect-go`, whose module `go.sum` checks
+  ([ADR-0010](docs/adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)).
+  `internal/workflowcheck` fails `make verify` on a `go run` package that its
+  module's `go.mod` does not pin.
 - **Tools are pinned in `mise.toml` and `mise.lock`**, with a checksum for each
   platform. No workflow downloads a tool any other way.
 - **`buf.yaml` and `buf.lock` are 1 pair.** `buf.lock` is in the tree, and

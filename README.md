@@ -26,6 +26,12 @@ that call them.
   grant, a list of capabilities on paths, and a stored object is checked in the
   app's own transaction
   ([permissions](https://frostyard.github.io/hearth/guides/permissions/)).
+- **A Connect route from the same service.** `protoc-gen-connect-go`, pinned as a
+  tool of the app's module, writes the app's HTTP API: the generated handler takes
+  the API that the permission checks return, and the generated client satisfies
+  the agent interface of the tools, so 1 service serves the app's UI and its
+  agents. A refusal arrives as `permission_denied` with the capability the caller
+  needs ([the Connect route](https://frostyard.github.io/hearth/guides/connect/)).
 - **MCP tools from your RPCs.** Each agent RPC is a tool with a proto3 JSON
   schema and the hints of its effect, served over stdio with no token
   ([MCP tools](https://frostyard.github.io/hearth/guides/mcp/)).
@@ -67,14 +73,16 @@ hearth manifest diff old/manifest.json gen/manifest.json
 ## How it works
 
 An app on hearth runs in 1 of 2 modes, with the same handlers. **Standalone**,
-it needs nothing else: its own user reaches it over its private socket or its
-stdio MCP server as the local user, who holds every capability, and its events
-go to an in-process bus. **On lodge**, frostyard's hub for first-party apps,
-lodge authenticates each caller and passes the caller's grant on the app's
-lodge socket, where hearth's adapter trusts it only after a peer check, and the
-app publishes its events to lodge's broker socket, which delivers each event
-only to a consumer whose grant reads its path. The
-[design](docs/design/overview.md) shows how the parts fit.
+it needs nothing else: its own user reaches its API over its private socket, as
+the local user who holds every capability, or its MCP tools over its stdio
+server, and its events go to an in-process bus. **On lodge**, frostyard's hub for
+first-party apps, lodge authenticates each caller and forwards the call on the
+app's lodge socket, where hearth's adapter trusts the caller's grant only after a
+peer check, and the app publishes its events to lodge's broker socket, which
+delivers each event only to a consumer whose grant reads its path. The
+[design](docs/design/overview.md) shows how the parts fit, and
+[the Connect route](https://frostyard.github.io/hearth/guides/connect/) is the API
+of both modes.
 
 ## Develop
 

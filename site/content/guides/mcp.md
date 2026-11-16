@@ -106,9 +106,10 @@ Never give a server that acts as the local user to a lodge caller. A caller that
 lodge authenticates arrives with `Lodge-Principal` and `Lodge-Grant` on the
 app's lodge socket, and the adapter sets that caller for that **request** of the
 app's API ([the permissions guide](permissions.md)). Today lodge routes an agent
-to the app's API, not to its MCP server. A transport that authenticates each MCP
-call and picks the caller per call is a later phase; until then, build 1 server
-per caller, or serve the local user alone.
+to the app's API, which the app serves over Connect
+([the Connect route](connect.md)), not to its MCP server. A transport that
+authenticates each MCP call and picks the caller per call is a later phase; until
+then, build 1 server per caller, or serve the local user alone.
 
 ## Errors an agent reads
 

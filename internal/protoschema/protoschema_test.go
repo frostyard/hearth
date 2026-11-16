@@ -97,6 +97,8 @@ message Everything {
   google.protobuf.UInt32Value u32_value = 37;
   google.protobuf.UInt64Value u64_value = 38;
   google.protobuf.BytesValue bytes_value = 39;
+  repeated double my_doubles = 40;
+  map<string, float> my_floats = 41;
 }
 `
 
@@ -167,6 +169,13 @@ func schemaOf(t *testing.T, messages map[string]protoreflect.MessageDescriptor, 
 	return schema
 }
 
+// specialFloat is the schema of 1 float or double value: proto3 JSON writes
+// NaN and the 2 infinities as strings.
+var specialFloat = map[string]any{"anyOf": []any{
+	map[string]any{"type": "number"},
+	map[string]any{"type": "string", "enum": []any{"NaN", "Infinity", "-Infinity"}},
+}}
+
 // TestScalars checks the mapping of each scalar kind, under its JSON name.
 func TestScalars(t *testing.T) {
 	messages := descriptors(t)
@@ -179,8 +188,8 @@ func TestScalars(t *testing.T) {
 		"myI64":    {"type": "string", "pattern": `^-?[0-9]+$`},
 		"myU64":    {"type": "string", "pattern": `^[0-9]+$`},
 		"myS64":    {"type": "string", "pattern": `^-?[0-9]+$`},
-		"myFloat":  {"type": "number"},
-		"myDouble": {"type": "number"},
+		"myFloat":  specialFloat,
+		"myDouble": specialFloat,
 		"myBool":   {"type": "boolean"},
 		"myString": {"type": "string"},
 		"myBytes":  {"type": "string", "contentEncoding": "base64"},
@@ -577,6 +586,63 @@ func TestNullValue(t *testing.T) {
 			t.Errorf("the protojson output %s does not validate: %v", instance, err)
 		}
 	}
+}
+
+// TestSpecialFloats checks the schema of float and double, and of the 2
+// wrappers: proto3 JSON writes NaN and the 2 infinities as strings, so the
+// schema admits 1 JSON number or 1 of those 3 strings, and no other string.
+func TestSpecialFloats(t *testing.T) {
+	messages := descriptors(t)
+	// The exact schema of each field, a repeated element and a map value.
+	for _, field := range []string{"myFloat", "myDouble", "doubleValue", "floatValue"} {
+		if got := property(t, messages, "Everything", field); !equalJSON(got, specialFloat) {
+			t.Errorf("%s = %v, want %v", field, got, specialFloat)
+		}
+	}
+	doubles := property(t, messages, "Everything", "myDoubles")
+	if items, ok := doubles["items"].(map[string]any); !ok || !equalJSON(items, specialFloat) {
+		t.Errorf("myDoubles.items = %v, want %v", doubles["items"], specialFloat)
+	}
+	floats := property(t, messages, "Everything", "myFloats")
+	if values, ok := floats["additionalProperties"].(map[string]any); !ok || !equalJSON(values, specialFloat) {
+		t.Errorf("myFloats.additionalProperties = %v, want %v", floats["additionalProperties"], specialFloat)
+	}
+
+	schema := compile(t, messages, "Everything")
+	for _, tc := range []struct {
+		name string
+		wrap func(value string) string
+	}{
+		{"a float field", func(value string) string { return `{"myFloat": ` + value + `}` }},
+		{"a double field", func(value string) string { return `{"myDouble": ` + value + `}` }},
+		{"a repeated double", func(value string) string { return `{"myDoubles": [` + value + `]}` }},
+		{"a map of float", func(value string) string { return `{"myFloats": {"k": ` + value + `}}` }},
+		{"a DoubleValue field", func(value string) string { return `{"doubleValue": ` + value + `}` }},
+		{"a FloatValue field", func(value string) string { return `{"floatValue": ` + value + `}` }},
+	} {
+		for _, value := range []string{"1.5", `"NaN"`, `"Infinity"`, `"-Infinity"`} {
+			instance := tc.wrap(value)
+			if err := validate(t, schema, instance); err != nil {
+				t.Errorf("%s: %s does not validate: %v", tc.name, instance, err)
+			}
+		}
+		for _, value := range []string{`"nan"`, `"1.5"`, "true"} {
+			instance := tc.wrap(value)
+			if err := validate(t, schema, instance); err == nil {
+				t.Errorf("%s: %s validates, and it is no number and no special value", tc.name, instance)
+			}
+		}
+	}
+}
+
+// validate returns the schema's verdict on 1 JSON instance.
+func validate(t *testing.T, schema *jsonschema.Schema, instance string) error {
+	t.Helper()
+	value, err := jsonschema.UnmarshalJSON(strings.NewReader(instance))
+	if err != nil {
+		t.Fatalf("%s: %v", instance, err)
+	}
+	return schema.Validate(value)
 }
 
 // compile returns the compiled schema of 1 message of the test app, by name.

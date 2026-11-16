@@ -1,9 +1,10 @@
 # notes-lite: 1 small app on hearth
 
 hearth generates an app's machinery from 1 Protobuf service: its manifest, its
-permission checks, its MCP tools and its event publishers. This tutorial builds
-such an app from an empty directory. The app keeps its notes in SQLite, it
-publishes 2 events, and it serves 4 MCP tools.
+permission checks, its Connect route, its MCP tools and its event publishers.
+This tutorial builds such an app from an empty directory. The app keeps its notes
+in SQLite, it publishes 2 events, it serves its API over Connect on its own
+socket and on lodge's, and it serves 4 MCP tools.
 
 This file is the app's source as well as its tutorial: each hand-written file
 below is 1 code block marked with its path, and hearth's gate fails when a block
@@ -26,17 +27,24 @@ go mod init example.com/notes-lite
 go get github.com/frostyard/hearth@latest modernc.org/sqlite@latest
 ```
 
-The 4 plugins and the `hearth` command run with `go run` of the hearth version
-that this module requires. Record them as tools of the module, so that `go.sum`
-holds the packages they import:
+The plugins and the `hearth` command run with `go run` of the modules that this
+module requires. Record them as tools of the module, so that `go.sum` holds the
+packages they import:
 
 ```sh
+go get connectrpc.com/connect@v1.21.1
+go get -tool connectrpc.com/connect/cmd/protoc-gen-connect-go
 go get -tool github.com/frostyard/hearth/cmd/protoc-gen-hearth-authz
 go get -tool github.com/frostyard/hearth/cmd/protoc-gen-hearth-mcp
 go get -tool github.com/frostyard/hearth/cmd/protoc-gen-hearth-events
 go get -tool github.com/frostyard/hearth/cmd/protoc-gen-hearth-manifest
 go get -tool github.com/frostyard/hearth/cmd/hearth
 ```
+
+`connectrpc.com/connect` is the module of the API's route. Its generator,
+`protoc-gen-connect-go`, publishes no release binary with a checksum for each
+platform, so it is no tool of `mise.lock`: the module pins it as a tool, and
+`go.sum` carries its checksum.
 
 ## Vendor hearth's options file
 
@@ -222,18 +230,26 @@ modules:
 
 ## The code generation
 
-`protoc-gen-go` writes the Go types, and hearth's 4 plugins write the manifest,
-the permission checks, the MCP tools and the event publishers. Each plugin runs
-with `go run`, so it is the hearth version of this module, and no plugin comes
-from a registry.
+`protoc-gen-go` writes the Go types, `protoc-gen-connect-go` writes the API's
+Connect route, and hearth's 4 plugins write the manifest, the permission checks,
+the MCP tools and the event publishers. Each plugin runs with `go run`, so it is
+the version of this module, and no plugin comes from a registry.
+
+`protoc-gen-connect-go` runs with `simple`: the generated handler interface then
+takes `(ctx, *Request) (*Response, error)`, which is the API that
+`protoc-gen-hearth-authz` generates, so the app's API is the Connect handler with
+no adapter. The generated client has the same shape, so it satisfies the agent
+interface that `protoc-gen-hearth-mcp` generates.
 
 <!-- file: buf.gen.yaml -->
 
 ```yaml
-# The example app's code: its Go types from protoc-gen-go, and its manifest,
+# The example app's code: its Go types from protoc-gen-go, its Connect route
+# from connectrpc.com/connect's protoc-gen-connect-go, and its manifest,
 # permission checks, MCP tools and event publishers from hearth's 4 plugins.
-# Each plugin runs with `go run` of the hearth version that go.mod requires, so
-# no plugin comes from a registry.
+# Each plugin runs with `go run` of a version that go.mod requires: the hearth
+# module that its go.mod replaces, and the connect module that its tool
+# directive pins. No plugin comes from a registry.
 version: v2
 inputs:
   - directory: proto
@@ -242,6 +258,14 @@ plugins:
     out: gen
     opt:
       - paths=source_relative
+  - local:
+      - go
+      - run
+      - connectrpc.com/connect/cmd/protoc-gen-connect-go
+    out: gen
+    opt:
+      - paths=source_relative
+      - simple
   - local:
       - go
       - run
@@ -366,8 +390,8 @@ buf dep update
 make generate
 ```
 
-`make generate` writes `gen/`: the Go types, the permission checks, the MCP
-tools, the event publishers, and `gen/manifest.json`. That manifest is the app's
+`make generate` writes `gen/`: the Go types, the Connect route, the permission
+checks, the MCP tools, the event publishers, and `gen/manifest.json`. That manifest is the app's
 contract with lodge: its capabilities and its events are what lodge shows for its
 consent.
 
@@ -665,7 +689,8 @@ func newID() (string, error) {
 The tests run the app as its own user, and as a caller whose grant covers 1
 folder only: the refusal, the folder filter and the events are what they check.
 They read the events from a bus of the same process, after the relay drained the
-outbox.
+outbox. The last test serves the app over Connect on a private socket and on
+lodge's socket, and it checks the code and the text of 1 refusal there.
 
 <!-- file: notes_test.go -->
 
@@ -674,16 +699,26 @@ package notes_test
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
+	"net"
+	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"connectrpc.com/connect"
+
 	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/connectserver"
 	"github.com/frostyard/hearth/events"
 	"github.com/frostyard/hearth/events/inproc"
 	"github.com/frostyard/hearth/events/outbox"
+	"github.com/frostyard/hearth/lodge"
 
 	"example.com/notes-lite"
 	notesv1 "example.com/notes-lite/gen/example/notes/v1"
+	"example.com/notes-lite/gen/example/notes/v1/notesv1connect"
 )
 
 // app returns the example app on a database in a temporary directory.
@@ -930,22 +965,144 @@ func TestReadFilters(t *testing.T) {
 		t.Errorf("the consumer got %d events more, want none", len(got))
 	}
 }
+
+// setHeaders is a client interceptor that sets the headers of each call.
+type setHeaders map[string]string
+
+// WrapUnary implements connect.Interceptor.
+func (h setHeaders) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		for name, value := range h {
+			req.Header().Set(name, value)
+		}
+		return next(ctx, req)
+	}
+}
+
+// WrapStreamingClient implements connect.Interceptor.
+func (h setHeaders) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler implements connect.Interceptor.
+func (h setHeaders) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+// lodgeCall returns the headers of a call that lodge forwards for 1 principal
+// with 1 grant.
+func lodgeCall(t *testing.T, grant string) setHeaders {
+	t.Helper()
+	return setHeaders{
+		connectserver.CallerHeader: connectserver.PrincipalCaller,
+		lodge.PrincipalHeader:      "chani",
+		lodge.GrantHeader:          base64.RawURLEncoding.EncodeToString([]byte(grant)),
+	}
+}
+
+// socketPath returns a path for a Unix socket in a directory of its own,
+// because a socket's path is 108 bytes at most and a test's directory can be
+// longer.
+func socketPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "notelite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("remove %s: %v", dir, err)
+		}
+	})
+	return filepath.Join(dir, "socket")
+}
+
+// serveSocket serves 1 handler over Connect on 1 Unix socket that admits the
+// connections of 1 user, and it returns the socket's path.
+func serveSocket(t *testing.T, uid int, handler http.Handler) string {
+	t.Helper()
+	path := socketPath(t)
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	served := make(chan error, 1)
+	go func() {
+		served <- connectserver.Serve(ctx, lodge.Listener(listener, uid), handler)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-served; err != nil {
+			t.Errorf("Serve: %v", err)
+		}
+	})
+	return path
+}
+
+// TestConnectSockets checks the app's 2 sockets: the app's own user writes and
+// lists 1 note on the private socket, and a caller whose grant reads /home is
+// refused 1 list of /work on lodge's socket, with the permission runtime's own
+// text.
+func TestConnectSockets(t *testing.T) {
+	example := app(t)
+	path, handler := notesv1connect.NewNoteServiceHandler(example.API(), connectserver.HandlerOptions()...)
+	private := serveSocket(t, os.Getuid(), connectserver.Private(path, handler))
+	onLodge := serveSocket(t, os.Getuid(), connectserver.Lodge(path, handler))
+
+	local := notesv1connect.NewNoteServiceClient(connectserver.UnixClient(private), "http://localhost")
+	created, err := local.CreateNote(t.Context(), &notesv1.CreateNoteRequest{Folder: "/work", Title: "buy milk"})
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+	listing, err := local.ListNotes(t.Context(), &notesv1.ListNotesRequest{Folder: "/work"})
+	if err != nil {
+		t.Fatalf("ListNotes: %v", err)
+	}
+	if len(listing.GetNotes()) != 1 || listing.GetNotes()[0].GetId() != created.GetNote().GetId() {
+		t.Fatalf("ListNotes of /work = %v, want the 1 note that the app's own user wrote", listing.GetNotes())
+	}
+
+	grant := `[{"cap":"notelite:read","sel":{"folder":"/home"}}]`
+	caller := notesv1connect.NewNoteServiceClient(connectserver.UnixClient(onLodge), "http://localhost/connect",
+		connect.WithInterceptors(lodgeCall(t, grant)))
+	_, err = caller.ListNotes(t.Context(), &notesv1.ListNotesRequest{Folder: "/work"})
+	if err == nil {
+		t.Fatal("ListNotes of /work passed, and the grant reads /home")
+	}
+	if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
+		t.Errorf("the refusal's code = %v, want %v", got, connect.CodePermissionDenied)
+	}
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("the refusal = %T, want a *connect.Error", err)
+	}
+	if want := "permission denied: needs notelite:read on folder=/work"; connectErr.Message() != want {
+		t.Errorf("the refusal = %q, want %q", connectErr.Message(), want)
+	}
+}
 ```
 
 ## The command
 
-`notelite mcp` serves the app's MCP tools over stdio. It opens the database,
-starts the relay, and builds the server with the local user: a stdio server needs
-no token, because the process is the user's own.
+The command has 2 subcommands. `notelite mcp` serves the app's MCP tools over
+stdio: it opens the database, starts the relay, and builds the server with the
+local user, because a stdio server needs no token when the process is the user's
+own. `notelite serve` serves the app's API over Connect on the app's private
+socket, as that user, and on lodge's socket when `-lodge` is set, where lodge
+forwards a caller's call at `/connect/<service>/<method>`. Each socket admits 1
+user id, and `/health` sits outside the adapter on both.
 
 <!-- file: cmd/notelite/main.go -->
 
 ```go
 // Command notelite is the example app of hearth: 1 small note service that
-// serves the MCP tools that hearth generates, over stdio.
+// serves the API, the MCP tools and the events that hearth generates.
 //
-// It publishes the app's events to the bus of its own process, and logs them
-// where a developer sees them. With -broker it publishes them to lodge's broker
+// It serves the app's API over Connect on its private socket, and on lodge's
+// socket when -lodge is set. It serves the MCP tools over stdio. It publishes
+// the app's events to the bus of its own process, and logs them where a
+// developer sees them; with -broker it publishes them to lodge's broker
 // instead.
 package main
 
@@ -955,6 +1112,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -962,35 +1121,68 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/connectserver"
 	"github.com/frostyard/hearth/events"
 	"github.com/frostyard/hearth/events/broker"
 	"github.com/frostyard/hearth/events/inproc"
 	"github.com/frostyard/hearth/events/outbox"
+	"github.com/frostyard/hearth/lodge"
 	"github.com/frostyard/hearth/mcpserver"
 
 	"example.com/notes-lite"
 	notesv1 "example.com/notes-lite/gen/example/notes/v1"
+	"example.com/notes-lite/gen/example/notes/v1/notesv1connect"
 )
 
-// The command's exit codes: 0 when the app served its tools, 1 when it failed,
-// and 2 for 1 usage problem.
+// The command's exit codes: 0 when the app served its tools or its API, 1 when
+// it failed, and 2 for 1 usage problem.
 const (
 	exitOK    = 0
 	exitError = 1
 	exitUsage = 2
 )
 
+// version is the app's version, in its manifest and in its health check.
+const version = "0.1.0"
+
 // usageText is the command's help.
-const usageText = `notelite serves the example app's MCP tools over stdio.
+const usageText = `notelite serves the example app's API over Connect, and its MCP tools over
+stdio.
 
 Usage:
   notelite [-db FILE] [-broker SOCKET] mcp
+  notelite [-db FILE] [-broker SOCKET] [-socket PATH] [-lodge PATH] [-lodge-uid UID] serve
+
+Commands:
+  mcp    serve the app's MCP tools over stdio, as the app's own user
+  serve  serve the app's API over Connect on its private socket, and on lodge's
+         socket too when -lodge is set
 
 Flags:
   -db FILE        the SQLite file (default notelite.db)
   -broker SOCKET  publish the events to lodge's broker on SOCKET, and not to the
                   bus of this process
+  -socket PATH    the app's private socket, of the command serve (default
+                  notelite.sock)
+  -lodge PATH     serve the app's API on lodge's socket at PATH too
+  -lodge-uid UID  the user id that the lodge socket admits (default: the user id
+                  of this process, which is what a developer needs)
 `
+
+// options are the command's flags.
+type options struct {
+	// db is the app's SQLite file.
+	db string
+	// broker is lodge's broker socket, or "" for the bus of this process.
+	broker string
+	// socket is the app's private socket.
+	socket string
+	// lodge is lodge's socket, or "" for no lodge socket.
+	lodge string
+	// lodgeUID is the user id that lodge's socket admits, or -1 for this
+	// process's own.
+	lodgeUID int
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
@@ -1001,69 +1193,176 @@ func run(args []string, stderr io.Writer) int {
 	flags := flag.NewFlagSet("notelite", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	dbPath := flags.String("db", "notelite.db", "the SQLite file")
-	socket := flags.String("broker", "", "publish the events to lodge's broker on this socket")
+	brokerSocket := flags.String("broker", "", "publish the events to lodge's broker on this socket")
+	socketPath := flags.String("socket", "notelite.sock", "the app's private socket")
+	lodgePath := flags.String("lodge", "", "serve the app's API on lodge's socket at this path")
+	lodgeUID := flags.Int("lodge-uid", -1, "the user id that the lodge socket admits")
 	flags.Usage = func() {
 		_, _ = fmt.Fprint(stderr, usageText)
 	}
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
-	if flags.NArg() != 1 || flags.Arg(0) != "mcp" {
-		_, _ = fmt.Fprintf(stderr, "notelite: the command is mcp\n\n%s", usageText)
+	if flags.NArg() != 1 {
+		_, _ = fmt.Fprintf(stderr, "notelite: the command is mcp or serve\n\n%s", usageText)
 		return exitUsage
 	}
+	app := options{db: *dbPath, broker: *brokerSocket, socket: *socketPath, lodge: *lodgePath, lodgeUID: *lodgeUID}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := serve(ctx, *dbPath, *socket, stderr); err != nil {
+	var err error
+	switch command := flags.Arg(0); command {
+	case "mcp":
+		err = runMCP(ctx, app, stderr)
+	case "serve":
+		err = runServe(ctx, app, stderr)
+	default:
+		_, _ = fmt.Fprintf(stderr, "notelite: the command %q is no command\n\n%s", command, usageText)
+		return exitUsage
+	}
+	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "notelite: %v\n", err)
 		return exitError
 	}
 	return exitOK
 }
 
-// serve opens the app's database, publishes its events, and serves its MCP
-// tools over stdio. It returns nil when the client closes the stream, and when
-// a signal ends the app.
-func serve(ctx context.Context, dbPath, socket string, stderr io.Writer) error {
+// runMCP serves the app's MCP tools over stdio. It returns nil when the client
+// closes the stream, and when a signal ends the app.
+func runMCP(ctx context.Context, app options, stderr io.Writer) error {
 	log := slog.New(slog.NewTextHandler(stderr, nil))
-	db, err := notes.Open(ctx, dbPath)
+	service, stop, err := open(ctx, app, log, stderr)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Error("the database did not close", "err", err)
-		}
-	}()
-	transport, closeTransport, err := eventTransport(socket, log, stderr)
-	if err != nil {
-		return err
-	}
-	defer closeTransport()
+	defer stop()
 
-	// The relay publishes each event that 1 transaction wrote, and it wakes
-	// when the app notifies it. It stops before the database closes.
-	ctx, cancel := context.WithCancel(ctx)
-	relay := outbox.NewRelay(db, transport, outbox.Options{Logger: log})
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		if err := relay.Run(ctx); err != nil {
-			log.Error("the relay stopped", "err", err)
-		}
-	}()
-	defer func() {
-		cancel()
-		<-stopped
-	}()
-
-	service := &notes.Service{DB: db, Notify: relay.Notify}
-	server := mcpserver.NewServer(&mcp.Implementation{Name: "notelite", Version: "0.1.0"},
+	server := mcpserver.NewServer(&mcp.Implementation{Name: "notelite", Version: version},
 		authz.LocalCaller(), notesv1.NoteServiceTools(service.API()))
 	if err := mcpserver.ServeStdio(ctx, server, os.Stdin, os.Stdout); err != nil && ctx.Err() == nil {
 		return err
 	}
 	return nil
+}
+
+// runServe serves the app's API over Connect on its private socket, as the
+// app's own user, and on lodge's socket when 1 is given. It returns nil when a
+// signal ends the app.
+func runServe(ctx context.Context, app options, stderr io.Writer) error {
+	log := slog.New(slog.NewTextHandler(stderr, nil))
+	service, stop, err := open(ctx, app, log, stderr)
+	if err != nil {
+		return err
+	}
+	defer stop()
+
+	// The route of the app's service: the generated Connect handler takes the
+	// API that the generated permission check gives, so 1 route serves the
+	// app's own user and lodge's callers, each with its own caller.
+	path, handler := notesv1connect.NewNoteServiceHandler(service.API(), connectserver.HandlerOptions()...)
+	// The app's own routes sit outside the adapter: /health is no Connect call
+	// and it reads no caller.
+	private := http.NewServeMux()
+	private.Handle(path, connectserver.Private(path, handler))
+	private.HandleFunc("/health", health)
+	onLodge := http.NewServeMux()
+	onLodge.Handle(connectserver.LodgePrefix, connectserver.Lodge(path, handler))
+	onLodge.HandleFunc("/health", health)
+
+	privateSocket, err := listenSocket(app.socket)
+	if err != nil {
+		return err
+	}
+	sockets := []socket{{listener: lodge.Listener(privateSocket, os.Getuid()), handler: private}}
+	if app.lodge != "" {
+		uid := app.lodgeUID
+		if uid < 0 {
+			uid = os.Getuid()
+		}
+		lodgeSocket, err := listenSocket(app.lodge)
+		if err != nil {
+			_ = privateSocket.Close()
+			return err
+		}
+		sockets = append(sockets, socket{listener: lodge.Listener(lodgeSocket, uid), handler: onLodge})
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	served := make(chan error, len(sockets))
+	for _, s := range sockets {
+		go func() {
+			served <- connectserver.Serve(ctx, s.listener, s.handler)
+		}()
+	}
+	// 1 socket that stops ends the app, so that a failure is never silent.
+	var first error
+	for range sockets {
+		if err := <-served; err != nil && first == nil {
+			first = err
+			cancel()
+		}
+	}
+	return first
+}
+
+// socket is 1 socket of the app, and the handler that it serves.
+type socket struct {
+	// listener admits the connections of 1 user only.
+	listener net.Listener
+	// handler serves the app's API, and the app's own routes beside it.
+	handler http.Handler
+}
+
+// listenSocket returns the listener of 1 Unix socket. The listener of
+// lodge.Listener admits 1 user only: it closes every other connection before it
+// reads a byte of it.
+func listenSocket(path string) (net.Listener, error) {
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", path, err)
+	}
+	return listener, nil
+}
+
+// health answers the app's health check.
+func health(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, `{"ok":true,"version":"`+version+`","protocol":1}`)
+}
+
+// open opens the app's database, its event transport, and the relay that
+// publishes each event that 1 committed change wrote. It returns the app, and
+// the function that stops the relay and closes the transport and the database.
+func open(ctx context.Context, app options, log *slog.Logger, stderr io.Writer) (*notes.Service, func(), error) {
+	db, err := notes.Open(ctx, app.db)
+	if err != nil {
+		return nil, nil, err
+	}
+	transport, closeTransport, err := eventTransport(app.broker, log, stderr)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
+	relayCtx, cancel := context.WithCancel(ctx)
+	relay := outbox.NewRelay(db, transport, outbox.Options{Logger: log})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		if err := relay.Run(relayCtx); err != nil {
+			log.Error("the relay stopped", "err", err)
+		}
+	}()
+	service := &notes.Service{DB: db, Notify: relay.Notify}
+	stop := func() {
+		cancel()
+		<-stopped
+		closeTransport()
+		if err := db.Close(); err != nil {
+			log.Error("the database did not close", "err", err)
+		}
+	}
+	return service, stop, nil
 }
 
 // eventTransport returns the app's event transport, and the function that
@@ -1106,6 +1405,25 @@ make ci BASE=origin/main
 
 ```sh
 go build -o notelite ./cmd/notelite
+./notelite -db notelite.db serve
+```
+
+The app serves its API on its private socket, `notelite.sock`, as your own user.
+The health check answers, and so does the API:
+
+```sh
+curl --unix-socket notelite.sock http://localhost/health
+curl --unix-socket notelite.sock -H 'Content-Type: application/json' \
+  -d '{"folder": "/work", "title": "buy milk"}' \
+  http://localhost/example.notes.v1.NoteService/CreateNote
+curl --unix-socket notelite.sock -H 'Content-Type: application/json' \
+  -d '{"folder": "/work"}' \
+  http://localhost/example.notes.v1.NoteService/ListNotes
+```
+
+The MCP client of the app starts the app as 1 stdio server:
+
+```sh
 ./notelite -db notelite.db mcp
 ```
 
@@ -1128,21 +1446,36 @@ gives it.
 
 ## Standalone, and with lodge
 
-Without `-broker`, the app publishes its events to a bus of its own process, and
-logs each 1 to stderr: that is the standalone mode, and it needs nothing else.
+Without `-broker` and `-lodge`, the app needs nothing else: it serves its API on
+its private socket as your own user, and it publishes its events to a bus of its
+own process, which logs each 1 to stderr. That is the standalone mode.
 
-With `-broker`, it publishes them to the NATS broker that lodge embeds, over
-lodge's Unix socket:
+With `-broker`, it publishes its events to the NATS broker that lodge embeds,
+over lodge's Unix socket:
 
 ```sh
-./notelite -db notelite.db -broker /run/lodge/nats.sock mcp
+./notelite -db notelite.db -broker /run/lodge/nats.sock serve
 ```
 
 The broker keeps the app's events in 1 stream named `app_notelite`, and a
 consumer that lodge admits reads them with the capability `notelite:read` and
-the folder it holds. An app's own API on lodge's socket, with lodge's caller per
-request, arrives with hearth's `Connect` route, which is a later phase: for now
-this app serves its MCP tools as the local user, and it publishes its events.
+the folder it holds.
+
+With `-lodge`, the app serves the same API on lodge's socket too:
+
+```sh
+./notelite -db notelite.db -lodge "$LODGE_SOCKET" -lodge-uid "$(id -u lodge)" serve
+```
+
+`$LODGE_SOCKET` is the app's socket on lodge's side. lodge forwards a user's call
+there as `POST /connect/<service>/<method>`, with the 3 headers that name the
+caller: `Lodge-Caller: principal`, `Lodge-Principal`, and `Lodge-Grant`
+(base64url without padding of the caller's grant). The socket admits
+`-lodge-uid` only, which is lodge's user id, and the app's generated permission
+check reads the caller's grant for every call: a grant that does not cover a
+note's folder is refused with `permission_denied` and the permission runtime's
+text. Without `-lodge-uid` the socket admits your own user id, which is what a
+developer needs to try the lodge socket by hand.
 
 ## Inside hearth's repository
 

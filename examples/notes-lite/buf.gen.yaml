@@ -1,7 +1,9 @@
-# The example app's code: its Go types from protoc-gen-go, and its manifest,
+# The example app's code: its Go types from protoc-gen-go, its Connect route
+# from connectrpc.com/connect's protoc-gen-connect-go, and its manifest,
 # permission checks, MCP tools and event publishers from hearth's 4 plugins.
-# Each plugin runs with `go run` of the hearth version that go.mod requires, so
-# no plugin comes from a registry.
+# Each plugin runs with `go run` of a version that go.mod requires: the hearth
+# module that its go.mod replaces, and the connect module that its tool
+# directive pins. No plugin comes from a registry.
 version: v2
 inputs:
   - directory: proto
@@ -10,6 +12,14 @@ plugins:
     out: gen
     opt:
       - paths=source_relative
+  - local:
+      - go
+      - run
+      - connectrpc.com/connect/cmd/protoc-gen-connect-go
+    out: gen
+    opt:
+      - paths=source_relative
+      - simple
   - local:
       - go
       - run

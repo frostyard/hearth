@@ -109,15 +109,19 @@ builds a whole app from its README.
 
     Read a grant, write a hook, and trust lodge's headers on 1 socket only.
 
-- <span class="fy-index">05</span> **[MCP tools](guides/mcp.md)**
+- <span class="fy-index">05</span> **[The Connect route](guides/connect.md)**
+
+    Serve an app's API over Connect, on its private socket and on lodge's.
+
+- <span class="fy-index">06</span> **[MCP tools](guides/mcp.md)**
 
     Serve an app's agent RPCs to an agent, over stdio or through lodge.
 
-- <span class="fy-index">06</span> **[Events](guides/events.md)**
+- <span class="fy-index">07</span> **[Events](guides/events.md)**
 
     Publish an app's events with its changes, standalone or through lodge.
 
-- <span class="fy-index">07</span> **[Manifest format](reference/manifest.md)**
+- <span class="fy-index">08</span> **[Manifest format](reference/manifest.md)**
 
     Look up every member of the format.
 

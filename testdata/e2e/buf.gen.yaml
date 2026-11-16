@@ -1,8 +1,11 @@
 # Generate the demo app of hearth's end-to-end test (make generate): its Go
-# code, its permission checks, its event publishers and its MCP tools into
-# internal/e2e/gen, and its manifest into testdata/e2e/gen. The hearth plugins
-# run from this checkout with `go run`, so no remote or installed plugin is
-# needed. testdata/ is ignored by `go test ./...`, so the generated Go code lives
+# code, its permission checks, its event publishers, its MCP tools and its
+# Connect route into internal/e2e/gen, and its manifest into testdata/e2e/gen.
+# The hearth plugins run from this checkout with `go run`, so no remote or
+# installed plugin is needed. protoc-gen-connect-go comes from the module that
+# go.mod's tool directive pins, and its `simple` option makes the generated
+# handler interface the API that protoc-gen-hearth-authz generates (ADR-0010).
+# testdata/ is ignored by `go test ./...`, so the generated Go code lives
 # outside it, and make gen-check compares both trees with a fresh run.
 version: v2
 plugins:
@@ -10,6 +13,14 @@ plugins:
     out: internal/e2e/gen
     opt:
       - paths=source_relative
+  - local:
+      - go
+      - run
+      - connectrpc.com/connect/cmd/protoc-gen-connect-go
+    out: internal/e2e/gen
+    opt:
+      - paths=source_relative
+      - simple
   - local:
       - go
       - run
