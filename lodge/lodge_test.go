@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/frostyard/hearth/authz"
@@ -161,14 +162,20 @@ func TestWrongPeerUIDRefused(t *testing.T) {
 	defer conn.Close()
 	// Connection: close makes a server that wrongly answers close the stream
 	// after its response, so the test fails on its assertion and never waits.
-	if _, err := io.WriteString(conn, "GET /notes HTTP/1.1\r\nHost: lodge\r\nConnection: close\r\n\r\n"); err != nil {
+	_, err = io.WriteString(conn, "GET /notes HTTP/1.1\r\nHost: lodge\r\nConnection: close\r\n\r\n")
+	switch {
+	case err == nil:
+		// The server closes the connection without a response: the read ends at
+		// the end of the stream, or with a reset.
+		response, readErr := io.ReadAll(conn)
+		if readErr == nil && len(response) > 0 {
+			t.Errorf("the refused connection got %d byte(s) of response: %q", len(response), response)
+		}
+	case errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET):
+		// The server closed the connection before the request was written: that
+		// is the refusal too.
+	default:
 		t.Fatalf("write the request: %v", err)
-	}
-	// The server closes the connection without a response: the read ends at the
-	// end of the stream, or with a reset.
-	response, err := io.ReadAll(conn)
-	if err == nil && len(response) > 0 {
-		t.Errorf("the refused connection got %d byte(s) of response: %q", len(response), response)
 	}
 	if got := handled.Load(); got != 0 {
 		t.Errorf("the handler ran %d time(s), want 0", got)
