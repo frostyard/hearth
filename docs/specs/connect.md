@@ -92,8 +92,8 @@ client := demov1connect.NewNoteServiceClient(connectserver.UnixClient(socket), "
 A generated client trims the trailing `/` of the base URL
 (`strings.TrimRight(baseURL, "/")`), so `http://localhost/connect/` is the same
 base as `http://localhost/connect`. A request URL that a caller builds by hand is
-the caller's own: 2 slashes answer `307`, and a client that follows that answer
-loses the call's body.
+the caller's own: a path with 2 slashes answers a `307` redirect and no call, so
+a caller must not build 1.
 
 ## Rules
 
