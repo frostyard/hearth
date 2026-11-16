@@ -77,6 +77,10 @@ type Server struct {
 	held bool
 	// closed is set by the cleanup: no connection is taken after it.
 	closed bool
+	// beforeSplice, when set, runs after start publishes a link's server
+	// connection and before the splice starts: a test of this package makes a
+	// cleanup come in between.
+	beforeSplice func(*link)
 	// waiting are the connections that Hold kept waiting, until Release.
 	waiting []*link
 }
@@ -86,8 +90,12 @@ type Server struct {
 type link struct {
 	// client is the connection of the socket.
 	client net.Conn
-	// server is the server's connection.
+	// server is the server's connection. start sets it 1 time, and it never
+	// changes after that.
 	server net.Conn
+	// done is set by forget: a link that is done never gets a server
+	// connection, and its splice copies nothing.
+	done bool
 }
 
 // Check admits 1 connection: the hub's token is the hub's user, and every other
@@ -330,17 +338,26 @@ func (s *Server) start(l *link) {
 		return
 	}
 	s.mu.Lock()
+	if l.done || s.closed {
+		// A cleanup or Drop forgot the link while the server made its
+		// connection: the connection is closed, and nothing is spliced.
+		s.mu.Unlock()
+		_ = serverConn.Close()
+		return
+	}
 	l.server = serverConn
+	hook := s.beforeSplice
 	s.mu.Unlock()
-	go s.splice(l)
+	if hook != nil {
+		hook(l)
+	}
+	go s.splice(l, serverConn)
 }
 
 // splice copies each direction of 1 link until 1 of them ends, and then closes
-// both.
-func (s *Server) splice(l *link) {
-	s.mu.Lock()
-	serverConn := l.server
-	s.mu.Unlock()
+// both. It gets the server's connection from start, so a forget that comes
+// first only makes both copies end at once.
+func (s *Server) splice(l *link, serverConn net.Conn) {
 	go func() {
 		_, _ = io.Copy(l.client, serverConn)
 		s.forget(l)
@@ -355,8 +372,8 @@ func (s *Server) splice(l *link) {
 func (s *Server) forget(l *link) {
 	s.mu.Lock()
 	delete(s.links, l)
+	l.done = true
 	serverConn := l.server
-	l.server = nil
 	s.mu.Unlock()
 	_ = l.client.Close()
 	if serverConn != nil {
