@@ -1,0 +1,4 @@
+exit 1
+app changed from "marks" to "notes"
+operation frostyard.frostmarks.v1.Marks.GetBookmark removed
+the breaking changes need the next major version: 1.2.0 -> 1.2.0

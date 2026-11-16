@@ -1,0 +1,137 @@
+// The demo app of hearth's end-to-end test: a small service whose generated
+// manifest makes `make gen-check` fail when the plugin's output changes
+// without the committed manifest.json.
+syntax = "proto3";
+
+package frostyard.demo.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "github.com/frostyard/hearth/testdata/e2e/gen/frostyard/demo/v1;demov1";
+
+// Note is 1 note, filed in a group.
+message Note {
+  // id identifies the note.
+  string id = 1;
+  // group is the selector the note is filed under.
+  string group = 2 [(frostyard.hearth.v1.hearth_selector) = "group"];
+  // text is the note's text.
+  string text = 3;
+}
+
+// NoteService serves notes.
+service NoteService {
+  // GetNote reads 1 note.
+  rpc GetNote(GetNoteRequest) returns (GetNoteResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "demo:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Read 1 note by its id."
+      examples: "{\"id\": \"n-1\"}"
+    };
+  }
+  // ListNotes reads the notes of 1 group.
+  rpc ListNotes(ListNotesRequest) returns (ListNotesResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "demo:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "List the notes of 1 group."
+      examples: "{\"group\": \"inbox\"}"
+    };
+  }
+  // CreateNote writes a note.
+  rpc CreateNote(CreateNoteRequest) returns (CreateNoteResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "demo:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Create a note in a group."
+      examples: "{\"note\": {\"group\": \"inbox\", \"text\": \"hello\"}}"
+    };
+  }
+  // PublishNote sends a note out of the system.
+  rpc PublishNote(PublishNoteRequest) returns (PublishNoteResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "demo:publish"
+      effect: EFFECT_OUTWARD
+      expose: EXPOSE_UI
+      agent_description: "Publish a note to the outside world."
+    };
+  }
+}
+
+// GetNoteRequest names the note to read.
+message GetNoteRequest {
+  // id identifies the note.
+  string id = 1;
+}
+
+// GetNoteResponse carries the note.
+message GetNoteResponse {
+  // note is the note that was read.
+  Note note = 1;
+}
+
+// ListNotesRequest names the group to list.
+message ListNotesRequest {
+  // group is the selector the notes are filed under.
+  string group = 1 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// ListNotesResponse carries the notes of the group.
+message ListNotesResponse {
+  // notes are the notes of the group.
+  repeated Note notes = 1;
+}
+
+// CreateNoteRequest carries the note to write.
+message CreateNoteRequest {
+  // note is the note to write.
+  Note note = 1;
+}
+
+// CreateNoteResponse carries the note that was written.
+message CreateNoteResponse {
+  // note is the note that was written.
+  Note note = 1;
+}
+
+// PublishNoteRequest names the note to publish.
+message PublishNoteRequest {
+  // id identifies the note.
+  string id = 1;
+}
+
+// PublishNoteResponse reports the publication.
+message PublishNoteResponse {
+  // url is where the note was published.
+  string url = 1;
+}
+
+// NoteCreated is published when a note is created.
+message NoteCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "note"
+    verb: "created"
+    selector: "group"
+    read_permission: "demo:read"
+  };
+  // id identifies the note.
+  string id = 1;
+}
+
+// NotePublished is published when a note leaves the system.
+message NotePublished {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "note"
+    verb: "published"
+    read_permission: "demo:publish"
+  };
+  // id identifies the note.
+  string id = 1;
+}

@@ -1,0 +1,65 @@
+{
+  "hearth": 1,
+  "app": "marks",
+  "version": "1.2.0",
+  "capabilities": [
+    "marks:export",
+    "marks:read",
+    "marks:write"
+  ],
+  "selectors": [
+    "folder",
+    "group"
+  ],
+  "operations": [
+    {
+      "name": "frostyard.frostmarks.v1.Marks.ExportBookmarks",
+      "permission": "marks:export",
+      "effect": "outward",
+      "expose": [
+        "ui"
+      ],
+      "selectors": []
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.GetBookmark",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui"
+      ],
+      "selectors": []
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.ListBookmarks",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "group.name",
+          "selector": "group"
+        }
+      ],
+      "tool": "list_bookmarks"
+    }
+  ],
+  "events": [
+    {
+      "type": "org.frostyard.marks.bookmark.created",
+      "message": "frostyard.frostmarks.v1.BookmarkCreated",
+      "topic": "marks.bookmark.created.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    },
+    {
+      "type": "org.frostyard.marks.bookmarks.exported",
+      "message": "frostyard.frostmarks.v1.BookmarksExported",
+      "topic": "marks.bookmarks.exported",
+      "read_permission": "marks:export"
+    }
+  ]
+}

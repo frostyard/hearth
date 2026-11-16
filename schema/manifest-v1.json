@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/frostyard/hearth/main/schema/manifest-v1.json",
+  "title": "hearth app manifest, format major 1",
+  "description": "The versioned contract of 1 app on hearth: its capabilities, selectors, operations and events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hearth", "app", "version", "capabilities", "selectors", "operations", "events"],
+  "properties": {
+    "hearth": {
+      "description": "The manifest format's major version.",
+      "const": 1
+    },
+    "app": {
+      "description": "The app's id.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{0,15}$"
+    },
+    "version": {
+      "description": "The app's semantic version.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "capabilities": {
+      "description": "Every capability of the app's operations and events, sorted.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "selectors": {
+      "description": "Every selector name of the app's operations and events, sorted.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/selectorName" }
+    },
+    "operations": {
+      "description": "The app's RPCs, sorted by name.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "events": {
+      "description": "The app's events, sorted by type.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "appID": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{0,15}$"
+    },
+    "capability": {
+      "description": "A capability, \"<app>:<capability>\".",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{0,15}:[a-z][a-z0-9_]*$"
+    },
+    "selectorName": {
+      "description": "A selector's name.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "selector": {
+      "description": "1 request field that carries a selector value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "selector"],
+      "properties": {
+        "field": {
+          "description": "The dotted path of proto field names.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "selector": { "$ref": "#/$defs/selectorName" }
+      }
+    },
+    "operation": {
+      "description": "1 RPC of the app's service.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "permission", "effect", "expose", "selectors"],
+      "properties": {
+        "name": {
+          "description": "The RPC's full name.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+        },
+        "permission": { "$ref": "#/$defs/capability" },
+        "effect": {
+          "description": "What the call does: read, a write that can be undone, or an outward change.",
+          "enum": ["read", "write", "outward"]
+        },
+        "expose": {
+          "description": "Where the RPC is reachable: the app's user interface, agents, or both.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["ui", "agent"] }
+        },
+        "selectors": {
+          "description": "The request fields that carry a selector value, sorted by field.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/selector" }
+        },
+        "tool": {
+          "description": "The RPC's MCP tool name. It is present only when expose holds agent.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      },
+      "if": {
+        "properties": { "expose": { "contains": { "const": "agent" } } },
+        "required": ["expose"]
+      },
+      "then": { "required": ["tool"] },
+      "else": { "not": { "required": ["tool"] } }
+    },
+    "event": {
+      "description": "1 event that an RPC of the app publishes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message", "topic", "read_permission"],
+      "properties": {
+        "type": {
+          "description": "The event's CloudEvents type, org.frostyard.<app>.<object>.<verb>.",
+          "type": "string",
+          "pattern": "^org\\.frostyard\\.[a-z][a-z0-9]{0,15}\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "message": {
+          "description": "The full name of the message that carries the event.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+        },
+        "topic": {
+          "description": "The broker topic, <app>.<object>.<verb>, with .<selector> when the event carries a selector.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]{0,15}(\\.[a-z][a-z0-9_]*){2,}$"
+        },
+        "selector": { "$ref": "#/$defs/selectorName" },
+        "read_permission": { "$ref": "#/$defs/capability" }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+// The any-in-agent-rpc case: an agent RPC whose request carries Any.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// SendRequest carries an opaque payload.
+message SendRequest {
+  // payload is opaque.
+  google.protobuf.Any payload = 1;
+}
+
+// SendResponse reports the send.
+message SendResponse {}
+
+// ThingService serves things.
+service ThingService {
+  // Send sends an opaque payload.
+  rpc Send(SendRequest) returns (SendResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_AGENT
+    };
+  }
+}

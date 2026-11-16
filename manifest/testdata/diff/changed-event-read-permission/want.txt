@@ -1,0 +1,3 @@
+exit 1
+event org.frostyard.marks.bookmark.created: read_permission changed from "marks:read" to "marks:write"
+the breaking changes need the next major version: 1.2.0 -> 1.2.0

@@ -1,0 +1,3 @@
+exit 1
+operation frostyard.frostmarks.v1.Marks.ListBookmarks: selectors changed from [folder.name=folder] to [group.name=folder]
+the breaking changes need the next major version: 1.2.0 -> 1.2.0

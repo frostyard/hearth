@@ -1,7 +1,7 @@
 # 0003 — Verify gate, risk paths and corrections
 
-- **Status:** Accepted
-- **Date:** YYYY-MM-DD <!-- set when you adopt the template -->
+- **Status:** Accepted; Superseded in part by [0005](0005-run-the-repository-gate-in-go.md)
+- **Date:** 2026-11-15
 
 ## Context
 
