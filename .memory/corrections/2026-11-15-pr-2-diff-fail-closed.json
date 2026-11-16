@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "docs",
+  "correction": "The manifest diff recipe must fail closed: only an absent manifest path at an existing base skips the comparison.",
+  "evidence": "frostyard/hearth#2, cross-review (openai/gpt-6.1-sol) re-review 1 of head 73c8f1a, finding 4",
+  "promoted_to": "AGENTS.md"
+}

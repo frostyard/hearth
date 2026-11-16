@@ -33,16 +33,22 @@ writes it.
 `hearth manifest diff OLD NEW` compares 2 manifests and reports what breaks:
 
 ```sh
-# the app's gate, against the default branch
+# the app's gate, against the default branch; it fails closed
+base=origin/main
+git rev-parse --verify --quiet "$base^{commit}" >/dev/null ||
+  { echo "no base commit $base: fetch it first"; exit 2; }
 old="$(mktemp -d)/manifest.json"
-git show origin/main:gen/manifest.json >"$old" 2>/dev/null || rm -f "$old"
+if git cat-file -e "$base:gen/manifest.json" 2>/dev/null; then
+  git show "$base:gen/manifest.json" >"$old" || exit 2
+fi
 hearth manifest diff "$old" gen/manifest.json
 ```
 
-`mktemp -d` gives a directory that the shell owns. When the default branch has
-no manifest yet, `git show` writes an empty file there, so the script removes
-it: the command then takes the "no old manifest" path and exits 0, instead of
-refusing an empty file with exit 2.
+The recipe fails closed. It stops when the base commit is not there, which is
+what a shallow clone gives; a `git show` failure is not an absent manifest. Only
+an absent manifest path at an existing base leaves OLD absent, so the command
+takes the "no old manifest" rule and exits 0. `mktemp -d` gives a directory that
+the shell owns.
 
 It prints 1 line for each breaking change, then the verdict:
 
@@ -75,9 +81,10 @@ A breaking change needs the app's next major version:
   `0.3.1` to `0.3.2`.
 
 A new app has no old manifest, so the command prints
-`no old manifest: nothing to compare` and exits 0. The script above leaves OLD
-absent for that case; a redirect that writes an empty file would instead give
-exit 2.
+`no old manifest: nothing to compare` and exits 0. The recipe above leaves OLD
+absent only for that case: it tests the path with `git cat-file -e`, so a base
+that is missing, or a `git show` that fails, stops the gate instead of skipping
+the comparison.
 
 ## Validate 1 manifest
 

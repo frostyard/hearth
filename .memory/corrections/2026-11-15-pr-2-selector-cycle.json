@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "internal/model",
+  "correction": "The selector walk's cycle guard must key on the message and the compound-path state, or a recursive repeated or map field hides a selector.",
+  "evidence": "frostyard/hearth#2, cross-review (openai/gpt-6.1-sol) re-review 1 of head 73c8f1a, finding 1",
+  "promoted_to": "cmd/protoc-gen-hearth-manifest/testdata/fail/selector-in-recursive-repeated"
+}

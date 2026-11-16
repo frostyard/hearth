@@ -139,6 +139,31 @@ When OLD does not exist, it prints `no old manifest: nothing to compare` and
 exits 0: a new app has no contract to break. `--verbose` also prints the
 additions, 1 line each, sorted.
 
+### The app's gate recipe
+
+An app runs the diff in its `make ci`, against its default branch:
+
+```sh
+# the app's gate, against the default branch; it fails closed
+base=origin/main
+git rev-parse --verify --quiet "$base^{commit}" >/dev/null ||
+  { echo "no base commit $base: fetch it first"; exit 2; }
+old="$(mktemp -d)/manifest.json"
+if git cat-file -e "$base:gen/manifest.json" 2>/dev/null; then
+  git show "$base:gen/manifest.json" >"$old" || exit 2
+fi
+hearth manifest diff "$old" gen/manifest.json
+```
+
+The recipe fails closed:
+
+- it stops with exit 2 when the base commit is not there, which is what a
+  shallow clone gives;
+- a `git show` failure stops it; such a failure is not an absent manifest;
+- only an absent manifest path at an existing base, which `git cat-file -e`
+  tests, leaves OLD absent, so the command prints
+  `no old manifest: nothing to compare` and exits 0.
+
 `hearth manifest validate FILE` reads 1 manifest and prints `FILE: valid`, or
 exits 2 with the reason.
 

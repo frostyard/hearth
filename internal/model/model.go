@@ -254,7 +254,7 @@ func (b *builder) addMethod(method *protogen.Method) {
 		}
 	}
 
-	op.Selectors = b.selectors(name, method.Desc.Input(), "", false, map[protoreflect.FullName]bool{})
+	op.Selectors = b.selectors(name, method.Desc.Input(), "", false, map[selectorVisit]bool{})
 	b.app.Operations = append(b.app.Operations, op)
 }
 
@@ -316,17 +316,27 @@ func (b *builder) checkAgentMessage(name string, message protoreflect.MessageDes
 	}
 }
 
+// selectorVisit identifies 1 step of the selector walk: a message, and whether
+// the path that reaches it enters a map or a repeated field. The cycle guard
+// keys on both, so that a message read on a singular path is read again once
+// the path enters a compound field, and the walk still ends.
+type selectorVisit struct {
+	message protoreflect.FullName
+	inside  bool
+}
+
 // selectors collects rule 7's selector fields of 1 request message: the fields
-// with hearth_selector, followed through singular message fields, as dotted
-// paths of proto field names. A selector must be on a path of singular fields:
-// a map value or a repeated message has no single value for the permission
-// check, so a selector inside 1 of them is a problem. onPath stops a cycle.
-func (b *builder) selectors(name string, message protoreflect.MessageDescriptor, path string, inside bool, onPath map[protoreflect.FullName]bool) []Selector {
-	if onPath[message.FullName()] {
+// with hearth_selector, followed through message fields, as dotted paths of
+// proto field names. A selector must be on a path of singular fields: a map
+// value or a repeated message has no single value for the permission check, so
+// a selector inside 1 of them is a problem. onPath stops a cycle.
+func (b *builder) selectors(name string, message protoreflect.MessageDescriptor, path string, inside bool, onPath map[selectorVisit]bool) []Selector {
+	visit := selectorVisit{message: message.FullName(), inside: inside}
+	if onPath[visit] {
 		return nil
 	}
-	onPath[message.FullName()] = true
-	defer delete(onPath, message.FullName())
+	onPath[visit] = true
+	defer delete(onPath, visit)
 
 	var out []Selector
 	fields := message.Fields()

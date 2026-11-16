@@ -122,7 +122,7 @@ func TestParams(t *testing.T) {
 }
 
 // TestSelectors checks rule 7: the selector fields of a request, as dotted
-// paths, with a cycle in the message graph.
+// paths, with a cycle of singular fields in the message graph.
 func TestSelectors(t *testing.T) {
 	const src = `syntax = "proto3";
 package frostyard.app.v1;
@@ -132,7 +132,6 @@ option go_package = "example.com/app/v1;appv1";
 message Node {
   string folder = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
   Node child = 2;
-  repeated Node children = 3;
 }
 
 message GetRequest {
@@ -286,7 +285,8 @@ service Things {
 // TestSelectorInsideCompound checks rule 7's path rule: a selector is allowed
 // only on a path of singular message fields. A map value or a repeated message
 // has no single value for the permission check, so generation refuses a
-// selector inside 1 of them, for a UI-only RPC as well as for an agent RPC.
+// selector inside 1 of them, for a UI-only RPC as well as for an agent RPC,
+// also when a recursive message hides it.
 func TestSelectorInsideCompound(t *testing.T) {
 	const header = `syntax = "proto3";
 package frostyard.app.v1;
@@ -309,6 +309,7 @@ service Things {
   }
 }
 `
+	const compound = `carries the selector "folder" inside a map or a repeated field`
 	for _, tc := range []struct {
 		name    string
 		request string
@@ -321,32 +322,45 @@ service Things {
 		{
 			name:    "a map value message",
 			request: "message ListRequest { map<string, FolderRef> folders = 1; }",
-			want:    `field folders.name carries the selector "folder" inside a map or a repeated field`,
+			want:    `field folders.name ` + compound,
 		},
 		{
 			name:    "a repeated message field",
 			request: "message ListRequest { repeated FolderRef folders = 1; }",
-			want:    `field folders.name carries the selector "folder" inside a map or a repeated field`,
+			want:    `field folders.name ` + compound,
 		},
 		{
 			name:    "a repeated message field under a singular message",
 			request: "message Wrapper { repeated FolderRef folders = 1; }\nmessage ListRequest { Wrapper wrapper = 1; }",
-			want:    `field wrapper.folders.name carries the selector "folder" inside a map or a repeated field`,
+			want:    `field wrapper.folders.name ` + compound,
 		},
 		{
 			name:    "a map value message under a singular message",
 			request: "message Wrapper { map<string, FolderRef> folders = 1; }\nmessage ListRequest { Wrapper wrapper = 1; }",
-			want:    `field wrapper.folders.name carries the selector "folder" inside a map or a repeated field`,
+			want:    `field wrapper.folders.name ` + compound,
 		},
 		{
-			name:    "a cycle, with a selector on the way",
-			request: "message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = \"folder\"]; Node child = 2; }\nmessage ListRequest { Node node = 1; }",
+			// The walk ends: the same message, on the same kind of path, is
+			// already on it.
+			name:    "a singular cycle ends the walk",
+			request: `message A { string f = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"]; A next = 2; }` + "\n" + "message ListRequest { A a = 1; }",
 		},
 		{
-			// The cycle stops the walk: the selector is already a problem, or
-			// already recorded, at the singular path that reaches it first.
-			name:    "a cycle through a repeated message stops at the cycle",
-			request: "message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = \"folder\"]; repeated Node children = 2; }\nmessage ListRequest { Node node = 1; }",
+			// The guard keys on the message and on the path's kind, so the
+			// message is read again once the path enters the repeated field.
+			name:    "a recursive repeated message",
+			request: `message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"]; repeated Node children = 2; }` + "\n" + "message ListRequest { Node node = 1; }",
+			want:    `field node.children.name ` + compound,
+		},
+		{
+			name:    "a recursive map value message",
+			request: `message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"]; map<string, Node> children = 2; }` + "\n" + "message ListRequest { Node node = 1; }",
+			want:    `field node.children.name ` + compound,
+		},
+		{
+			name:    "a recursive message reached through a repeated field",
+			request: `message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"]; Node next = 2; }` + "\n" + "message ListRequest { repeated Node nodes = 1; }",
+			want:    `field nodes.name ` + compound,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

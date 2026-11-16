@@ -24,6 +24,12 @@ Run it with no arguments for its usage.
 A path that does not exist as OLD prints
 `no old manifest: nothing to compare` and exits 0.
 
+Write the gate recipe so that it fails closed: check the base commit
+(`git rev-parse --verify`), test the manifest path with `git cat-file -e`, and
+let only an absent path at an existing base leave OLD absent. A `git show` that
+fails stops the gate. [The manifest guide](../guides/manifest.md) holds the
+recipe.
+
 ### `hearth manifest validate FILE`
 
 It prints `FILE: valid`, or exits 2 with the reason.

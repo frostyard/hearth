@@ -191,6 +191,9 @@ func TestFail(t *testing.T) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			params := readFile(t, filepath.Join(dir, "params.txt"))
 			want := readFile(t, filepath.Join(dir, "want.txt"))
+			if want == "" {
+				t.Fatalf("%s/want.txt is empty: it must hold a substring that the error has, or the case passes for any error", dir)
+			}
 			response, err := Generate(compileCase(t, dir, params))
 			if err == nil {
 				t.Fatalf("Generate succeeded, and the error must contain %q", want)

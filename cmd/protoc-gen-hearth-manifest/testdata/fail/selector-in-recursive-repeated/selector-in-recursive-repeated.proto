@@ -1,0 +1,41 @@
+// The selector-in-recursive-repeated case: a selector on a recursive message
+// that a repeated field reaches, so the selector sits inside a repeated field.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// Node is 1 node of a tree, and its children are nodes as well.
+message Node {
+  // name is the node's name.
+  string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+  // children are the node's children.
+  repeated Node children = 2;
+}
+
+// TreeRequest holds the tree to read.
+message TreeRequest {
+  // root is the tree's root.
+  Node root = 1;
+}
+
+// TreeResponse carries the tree's names.
+message TreeResponse {
+  // names are the nodes' names.
+  repeated string names = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // Tree reads 1 tree.
+  rpc Tree(TreeRequest) returns (TreeResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}
