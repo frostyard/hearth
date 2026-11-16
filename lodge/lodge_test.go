@@ -291,6 +291,7 @@ func TestBadGrant403(t *testing.T) {
 		{"a bad capability", grantHeader(t, `[{"cap":"Demo:read"}]`)},
 		{"an unknown member", grantHeader(t, `[{"cap":"demo:read","extra":"x"}]`)},
 		{"an invalid path", grantHeader(t, `[{"cap":"demo:read","sel":{"group":"/a/../b"}}]`)},
+		{"an explicit null sel", grantHeader(t, `[{"cap":"demo:read","sel":null}]`)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://lodge/notes", nil)

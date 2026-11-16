@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "authz",
+  "correction": "ParseGrant reads an item's \"sel\" as raw JSON and refuses it unless it is a JSON object: \"sel\": null would decode into a nil map, read as no selector, and so allow every path. An absent \"sel\" stays the root path.",
+  "evidence": "frostyard/hearth#4, cross-review (openai/gpt-6.1-sol) of head 56e7590, finding 2",
+  "promoted_to": "TestParseGrantNullSel (authz); TestBadGrant403/an_explicit_null_sel (lodge)"
+}

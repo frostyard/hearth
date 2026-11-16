@@ -23,12 +23,25 @@ const draft = "https://json-schema.org/draft/2020-12/schema"
 // mapping and are never expanded from their fields.
 const wellKnownPrefix = "google.protobuf."
 
+// nullValueName is the full name of google.protobuf.NullValue, an enum whose
+// proto3 JSON form is the JSON null.
+const nullValueName protoreflect.FullName = wellKnownPrefix + "NullValue"
+
 // ForMessage returns the JSON Schema of the proto3 JSON form of 1 message, as
 // canonical JSON: the object keys sorted, 2 spaces of indent, and no trailing
 // newline. The result is deterministic: the same message gives the same bytes.
+//
+// The message must have a JSON object form, because a tool's arguments and
+// result are JSON objects: a well-known type that protojson writes as a string,
+// a number, an array or a JSON null (Timestamp, Duration, FieldMask, Value,
+// ListValue, every wrapper type) has no such schema, and ForMessage refuses it.
+// Struct and Empty are objects, and they are allowed.
 func ForMessage(md protoreflect.MessageDescriptor) ([]byte, error) {
 	if md == nil {
 		return nil, fmt.Errorf("build the schema: the message is nil")
+	}
+	if !HasObjectForm(md) {
+		return nil, fmt.Errorf("build the schema of %s: its proto3 JSON form is no object", md.FullName())
 	}
 	b := &builder{recursive: map[protoreflect.FullName]bool{}}
 	messages := map[protoreflect.FullName]protoreflect.MessageDescriptor{}
@@ -52,6 +65,20 @@ func ForMessage(md protoreflect.MessageDescriptor) ([]byte, error) {
 		return nil, fmt.Errorf("write the schema of %s: %w", md.FullName(), err)
 	}
 	return data, nil
+}
+
+// HasObjectForm reports whether 1 message's proto3 JSON form is 1 JSON object,
+// which is what a tool's arguments and result must be. A message that is not a
+// well-known type is an object; of the well-known types, Struct, Empty and Any
+// are objects, and every other 1 is not.
+func HasObjectForm(md protoreflect.MessageDescriptor) bool {
+	if md == nil {
+		return false
+	}
+	if schema, ok := wellKnown(md.FullName()); ok {
+		return schema["type"] == "object"
+	}
+	return true
 }
 
 // builder builds 1 message's schema.
@@ -224,6 +251,11 @@ func (b *builder) fieldSchema(fd protoreflect.FieldDescriptor) (any, error) {
 // valueSchema returns the schema of 1 value of a field.
 func (b *builder) valueSchema(fd protoreflect.FieldDescriptor) (any, error) {
 	fd = valueField(fd)
+	if fd.Kind() == protoreflect.EnumKind && fd.Enum().FullName() == nullValueName {
+		// google.protobuf.NullValue is an enum, and its proto3 JSON form is the
+		// JSON null, not a value's name.
+		return map[string]any{"type": "null"}, nil
+	}
 	switch fd.Kind() {
 	case protoreflect.BoolKind:
 		return map[string]any{"type": "boolean"}, nil
@@ -308,8 +340,6 @@ func wellKnown(name protoreflect.FullName) (map[string]any, bool) {
 		return map[string]any{"type": "array"}, true
 	case "Empty":
 		return map[string]any{"type": "object"}, true
-	case "NullValue":
-		return map[string]any{"type": "null"}, true
 	case "DoubleValue", "FloatValue":
 		return map[string]any{"type": "number"}, true
 	case "Int64Value", "UInt64Value":

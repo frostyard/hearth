@@ -687,21 +687,21 @@ const file_frostyard_demo_v1_demo_proto_rawDesc = "" +
 	"\x04note\x12\acreated\x1a\x05group\"\tdemo:read\"D\n" +
 	"\rNotePublished\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id:#\xe2\x8a\x19\x1f\n" +
-	"\x04note\x12\tpublished\"\fdemo:publish2\xcc\x06\n" +
+	"\x04note\x12\tpublished\"\fdemo:publish2\xcd\x06\n" +
 	"\vNoteService\x12\x8e\x01\n" +
 	"\aGetNote\x12!.frostyard.demo.v1.GetNoteRequest\x1a\".frostyard.demo.v1.GetNoteResponse\"<Ҋ\x198\n" +
-	"\tdemo:read\x10\x01\x1a\x02\x01\x02\"\x16Read 1 note by its id.*\r{\"id\": \"n-1\"}\x12\x9d\x01\n" +
-	"\tListNotes\x12#.frostyard.demo.v1.ListNotesRequest\x1a$.frostyard.demo.v1.ListNotesResponse\"EҊ\x19A\n" +
-	"\tdemo:read\x10\x01\x1a\x02\x01\x02\"\x1aList the notes of 1 group.*\x12{\"group\": \"inbox\"}\x12\xbb\x01\n" +
+	"\tdemo:read\x10\x01\x1a\x02\x01\x02\"\x16Read 1 note by its id.*\r{\"id\": \"n-1\"}\x12\x9e\x01\n" +
+	"\tListNotes\x12#.frostyard.demo.v1.ListNotesRequest\x1a$.frostyard.demo.v1.ListNotesResponse\"FҊ\x19B\n" +
+	"\tdemo:read\x10\x01\x1a\x02\x01\x02\"\x1aList the notes of 1 group.*\x13{\"group\": \"/inbox\"}\x12\xbc\x01\n" +
 	"\n" +
-	"CreateNote\x12$.frostyard.demo.v1.CreateNoteRequest\x1a%.frostyard.demo.v1.CreateNoteResponse\"`Ҋ\x19\\\n" +
+	"CreateNote\x12$.frostyard.demo.v1.CreateNoteRequest\x1a%.frostyard.demo.v1.CreateNoteResponse\"aҊ\x19]\n" +
 	"\n" +
-	"demo:write\x10\x02\x1a\x02\x01\x02\"\x19Create a note in a group.*-{\"note\": {\"group\": \"inbox\", \"text\": \"hello\"}}\x12\x9c\x01\n" +
+	"demo:write\x10\x02\x1a\x02\x01\x02\"\x19Create a note in a group.*.{\"note\": {\"group\": \"/inbox\", \"text\": \"hello\"}}\x12\x9c\x01\n" +
 	"\vPublishNote\x12%.frostyard.demo.v1.PublishNoteRequest\x1a&.frostyard.demo.v1.PublishNoteResponse\">Ҋ\x19:\n" +
-	"\fdemo:publish\x10\x03\x1a\x02\x01\x02\"$Publish a note to the outside world.\x12\xae\x01\n" +
-	"\bMoveNote\x12\".frostyard.demo.v1.MoveNoteRequest\x1a#.frostyard.demo.v1.MoveNoteResponse\"YҊ\x19U\n" +
+	"\fdemo:publish\x10\x03\x1a\x02\x01\x02\"$Publish a note to the outside world.\x12\xad\x01\n" +
+	"\bMoveNote\x12\".frostyard.demo.v1.MoveNoteRequest\x1a#.frostyard.demo.v1.MoveNoteResponse\"XҊ\x19T\n" +
 	"\n" +
-	"demo:write\x10\x02\x1a\x02\x01\x02\"\x1dMove a note to another group.*\"{\"id\": \"n-1\", \"to_group\": \"/work\"}BGZEgithub.com/frostyard/hearth/internal/e2e/gen/frostyard/demo/v1;demov1b\x06proto3"
+	"demo:write\x10\x02\x1a\x02\x01\x02\"\x1dMove a note to another group.*!{\"id\": \"n-1\", \"toGroup\": \"/work\"}BGZEgithub.com/frostyard/hearth/internal/e2e/gen/frostyard/demo/v1;demov1b\x06proto3"
 
 var (
 	file_frostyard_demo_v1_demo_proto_rawDescOnce sync.Once

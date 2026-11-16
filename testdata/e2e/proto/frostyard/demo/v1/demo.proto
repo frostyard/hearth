@@ -40,7 +40,7 @@ service NoteService {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "List the notes of 1 group."
-      examples: "{\"group\": \"inbox\"}"
+      examples: "{\"group\": \"/inbox\"}"
     };
   }
   // CreateNote writes a note.
@@ -51,7 +51,7 @@ service NoteService {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "Create a note in a group."
-      examples: "{\"note\": {\"group\": \"inbox\", \"text\": \"hello\"}}"
+      examples: "{\"note\": {\"group\": \"/inbox\", \"text\": \"hello\"}}"
     };
   }
   // PublishNote sends a note out of the system.
@@ -72,7 +72,7 @@ service NoteService {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "Move a note to another group."
-      examples: "{\"id\": \"n-1\", \"to_group\": \"/work\"}"
+      examples: "{\"id\": \"n-1\", \"toGroup\": \"/work\"}"
     };
   }
 }

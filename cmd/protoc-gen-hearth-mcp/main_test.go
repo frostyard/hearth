@@ -243,7 +243,7 @@ func TestDescriptions(t *testing.T) {
 	for _, want := range []string{
 		`"Read 1 note by its id.\nExample input: {\"id\": \"n-1\"}"`,
 		`"List reads the notes of 1 group."`,
-		`"Create a note in a group.\nExample input: {\"note\": {\"group\": \"inbox\"}}\nExample input: {\"note\": {\"group\": \"/work/2026\"}}"`,
+		`"Create a note in a group.\nExample input: {\"note\": {\"group\": \"/inbox\"}}\nExample input: {\"note\": {\"group\": \"/work/2026\"}}"`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Errorf("the generated code has no description %s:\n%s", want, source)
@@ -296,6 +296,37 @@ func TestExamplesValidate(t *testing.T) {
 	}
 	if examples == 0 {
 		t.Fatal("no example of an agent RPC was checked")
+	}
+}
+
+// TestFail checks that a refused app fails generation, with an error that holds
+// the case's text, and writes no file.
+func TestFail(t *testing.T) {
+	dirs, err := filepath.Glob(filepath.Join("testdata", "fail", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) == 0 {
+		t.Fatal("no failure case")
+	}
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			params := readFile(t, filepath.Join(dir, "params.txt"))
+			want := readFile(t, filepath.Join(dir, "want.txt"))
+			if want == "" {
+				t.Fatalf("%s/want.txt is empty: it must hold a substring that the error has", dir)
+			}
+			response, err := Generate(compileCase(t, dir, params))
+			if err == nil {
+				t.Fatalf("Generate succeeded, and the error must contain %q", want)
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the error does not contain %q:\n%v", want, err)
+			}
+			if files := response.GetFile(); len(files) > 0 {
+				t.Errorf("a refused app wrote %d file(s)", len(files))
+			}
+		})
 	}
 }
 

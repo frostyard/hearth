@@ -104,7 +104,7 @@ service Notes {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "Create a note in a group."
-      examples: "{\"note\": {\"group\": \"inbox\"}}"
+      examples: "{\"note\": {\"group\": \"/inbox\"}}"
       examples: "{\"note\": {\"group\": \"/work/2026\"}}"
     };
   }

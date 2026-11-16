@@ -1,0 +1,1 @@
+example 0 is no call of the tool "move"

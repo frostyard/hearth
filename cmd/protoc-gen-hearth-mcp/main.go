@@ -11,11 +11,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/pluginpb"
@@ -71,6 +73,22 @@ func generate(gen *protogen.Plugin) error {
 	for _, op := range app.Operations {
 		operations[op.Method.FullName()] = op
 	}
+
+	// Check every agent RPC before any file is written, so that a refused app
+	// writes nothing.
+	for _, file := range gen.Files {
+		if !file.Generate {
+			continue
+		}
+		for _, service := range file.Services {
+			for _, method := range agentMethods(service, operations) {
+				if err := checkAgentRPC(method); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	for _, file := range gen.Files {
 		if !file.Generate {
 			continue
@@ -80,6 +98,65 @@ func generate(gen *protogen.Plugin) error {
 		}
 	}
 	return nil
+}
+
+// checkAgentRPC checks 1 agent RPC before its tool is written: a tool's
+// arguments and result are JSON objects, and each example must fit the tool's
+// input schema, or an agent reads an example that the call refuses.
+func checkAgentRPC(method agentMethod) error {
+	name := method.method.Desc.FullName()
+	for _, side := range []struct {
+		what    string
+		message *protogen.Message
+	}{
+		{"request", method.method.Input},
+		{"response", method.method.Output},
+	} {
+		if !protoschema.HasObjectForm(side.message.Desc) {
+			return fmt.Errorf("%s: an agent RPC's %s %s has no JSON object form", name, side.what, side.message.Desc.FullName())
+		}
+	}
+	data, err := protoschema.ForMessage(method.method.Input.Desc)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	schema, err := compileSchema(data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	for i, example := range method.op.Examples {
+		value, err := jsonschema.UnmarshalJSON(strings.NewReader(example))
+		if err != nil {
+			return fmt.Errorf("%s: example %d is no JSON: %w", name, i, err)
+		}
+		if err := schema.Validate(value); err != nil {
+			return fmt.Errorf("%s: example %d is no call of the tool %q: %s", name, i, method.op.Tool, oneLine(err))
+		}
+	}
+	return nil
+}
+
+// compileSchema compiles 1 tool's input schema.
+func compileSchema(data []byte) (*jsonschema.Schema, error) {
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("read the tool's input schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	const id = "https://example.com/hearth/tool-input.json"
+	if err := compiler.AddResource(id, doc); err != nil {
+		return nil, fmt.Errorf("load the tool's input schema: %w", err)
+	}
+	schema, err := compiler.Compile(id)
+	if err != nil {
+		return nil, fmt.Errorf("compile the tool's input schema: %w", err)
+	}
+	return schema, nil
+}
+
+// oneLine returns 1 error's text on 1 line.
+func oneLine(err error) string {
+	return strings.Join(strings.Fields(err.Error()), " ")
 }
 
 // agentMethod is 1 RPC that an agent reaches, with its operation.

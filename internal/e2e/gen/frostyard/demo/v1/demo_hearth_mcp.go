@@ -227,7 +227,7 @@ func NoteServiceTools(api NoteServiceAgentAPI) []mcpserver.Tool {
 		},
 		{
 			Name:         "list_notes",
-			Description:  "List the notes of 1 group.\nExample input: {\"group\": \"inbox\"}",
+			Description:  "List the notes of 1 group.\nExample input: {\"group\": \"/inbox\"}",
 			Effect:       mcpserver.EffectRead,
 			InputSchema:  json.RawMessage(noteServiceListNotesInputSchema),
 			OutputSchema: json.RawMessage(noteServiceListNotesOutputSchema),
@@ -241,7 +241,7 @@ func NoteServiceTools(api NoteServiceAgentAPI) []mcpserver.Tool {
 		},
 		{
 			Name:         "create_note",
-			Description:  "Create a note in a group.\nExample input: {\"note\": {\"group\": \"inbox\", \"text\": \"hello\"}}",
+			Description:  "Create a note in a group.\nExample input: {\"note\": {\"group\": \"/inbox\", \"text\": \"hello\"}}",
 			Effect:       mcpserver.EffectWrite,
 			InputSchema:  json.RawMessage(noteServiceCreateNoteInputSchema),
 			OutputSchema: json.RawMessage(noteServiceCreateNoteOutputSchema),
@@ -269,7 +269,7 @@ func NoteServiceTools(api NoteServiceAgentAPI) []mcpserver.Tool {
 		},
 		{
 			Name:         "move_note",
-			Description:  "Move a note to another group.\nExample input: {\"id\": \"n-1\", \"to_group\": \"/work\"}",
+			Description:  "Move a note to another group.\nExample input: {\"id\": \"n-1\", \"toGroup\": \"/work\"}",
 			Effect:       mcpserver.EffectWrite,
 			InputSchema:  json.RawMessage(noteServiceMoveNoteInputSchema),
 			OutputSchema: json.RawMessage(noteServiceMoveNoteOutputSchema),

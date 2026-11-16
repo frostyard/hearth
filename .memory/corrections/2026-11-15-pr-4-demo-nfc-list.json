@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "internal/e2e",
+  "correction": "The permission check compares paths in Unicode NFC, so the demo app canonicalizes a group with authz.CleanPath when it stores 1 and when it compares a request's group. A raw string comparison missed a note that 1 spelling stored and the other listed.",
+  "evidence": "frostyard/hearth#4, cross-review (openai/gpt-6.1-sol) of head 56e7590, finding 5",
+  "promoted_to": "TestListNotesCanonicalGroups (internal/e2e)"
+}

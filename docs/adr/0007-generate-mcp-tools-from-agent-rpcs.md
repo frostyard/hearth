@@ -43,14 +43,25 @@ Go MCP SDK (github.com/modelcontextprotocol/go-sdk, v1).
 - **The schema is the proto3 JSON mapping.** The input schema is the JSON Schema
   (draft 2020-12) of the request message, and the output schema is the same of
   the response message: properties by JSON name, no property the message does
-  not declare, 64-bit integers as strings, `bytes` as base64, enums by name, a
+  not declare, 64-bit integers as strings, `bytes` as base64, enums by name (the
+  enum `NullValue` is the JSON null), a
   recursive message as a definition under `$defs` with a `$ref`, and a real
   oneof as "none or exactly 1 of its fields". The well-known types have their
   proto3 JSON form (a `Timestamp` is a date-time string). The subset is closed:
   an agent RPC may carry no `google.protobuf.Any` and no map of messages
   (ADR-0004), so every schema describes the call exactly.
+- **The request and the response are objects.** A tool's arguments and its
+  result are JSON objects, so the request message and the response message must
+  have a JSON object form. `Struct` and `Empty` are objects; a `Timestamp`, a
+  `Duration`, a `FieldMask`, a `Value`, a `ListValue` and every wrapper type are
+  not, and the plugin refuses an agent RPC that uses 1 as its request or its
+  response. A schema that describes a string as an object would describe no
+  call, and the tool could not work.
 - **The description is the agent's.** It is the RPC's `agent_description`, or
-  its leading comment, and 1 line `Example input: <json>` per example.
+  its leading comment, and 1 line `Example input: <json>` per example. An
+  example must be a call the tool accepts, so the plugin validates each 1
+  against the tool's input schema and refuses 1 that does not fit: an agent
+  reads the example and copies it.
 - **The effect is the hint.** `read` is read-only and opens no world; `write` is
   neither read-only nor destructive; `outward` is destructive and open. All 3
   hints are written, never left absent, because the protocol reads an absent
@@ -60,9 +71,14 @@ Go MCP SDK (github.com/modelcontextprotocol/go-sdk, v1).
   `invalid arguments: <detail>`. The agent reads either and can correct itself.
 - **The stdio server is the local user.** `mcpserver.ServeStdio` runs the tools
   over 2 streams with no token, and the app builds the server with
-  `authz.LocalCaller()`, so every tool call runs as the local user. lodge is the
-  only caller that arrives with a token, and it arrives over the lodge socket
-  (ADR-0006), not over stdio.
+  `authz.LocalCaller()`, so every tool call runs as the local user.
+- **1 server serves 1 caller.** `mcpserver.NewServer` fixes the caller of every
+  call of that server, so an app builds 1 server per caller, and it never gives
+  a server that acts as the local user to a caller that lodge authenticated.
+  lodge sets the caller of the app's API, per request, on the app's lodge socket
+  (ADR-0006); an agent that lodge routes reaches that API, not the app's MCP
+  server. A transport that authenticates each MCP call and picks the caller per
+  call is a later phase.
 - **The tools take a Go interface.** `NotesTools(api NotesAgentAPI)` takes the
   app's handler, so an in-process call is 1 method call; a `Connect` client that
   satisfies the same interface plugs in without a change to the generated code.

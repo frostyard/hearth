@@ -62,7 +62,7 @@ func (s *NoteService) Wired() demov1.NoteServiceAPI {
 func (s *NoteService) SeedNote(id, group string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.store.notes[id] = &demov1.Note{Id: id, Group: group}
+	s.store.notes[id] = &demov1.Note{Id: id, Group: groupOf(group)}
 }
 
 // tx runs fn inside the app's transaction.
@@ -120,8 +120,14 @@ func (s *NoteService) CreateNote(ctx context.Context, req *demov1.CreateNoteRequ
 	}
 	note := clone(req.GetNote())
 	if note.GetId() == "" {
-		tx.next++
-		note.Id = fmt.Sprintf("n-%d", tx.next)
+		// The app names a note that carries no id, with a free id.
+		for {
+			tx.next++
+			note.Id = fmt.Sprintf("n-%d", tx.next)
+			if _, taken := tx.notes[note.GetId()]; !taken {
+				break
+			}
+		}
 	}
 	note.Group = groupOf(note.GetGroup())
 	if _, ok := tx.notes[note.GetId()]; ok {
@@ -204,12 +210,19 @@ func transaction(ctx context.Context) (*store, error) {
 	return tx, nil
 }
 
-// groupOf returns 1 request's group: an absent value is the root.
+// groupOf returns the canonical form of 1 group: the Unicode NFC form of the
+// path that the permission check compares a grant with, so that 2 spellings of 1
+// group are 1 group. An absent value is the root, and a value that is no path is
+// returned as it came, so that it matches no other group.
 func groupOf(group string) string {
 	if group == "" {
 		return authz.Root
 	}
-	return group
+	cleaned, err := authz.CleanPath(group)
+	if err != nil {
+		return group
+	}
+	return cleaned
 }
 
 // under reports whether 1 group is the path, or below it.

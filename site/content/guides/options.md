@@ -41,7 +41,7 @@ service Marks {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "List the bookmarks of a folder."
-      examples: "{\"folder\": {\"name\": \"reading\"}}"
+      examples: "{\"folder\": {\"name\": \"/reading\"}}"
     };
   }
 }

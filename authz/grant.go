@@ -73,24 +73,64 @@ func NewGrant(items ...Item) (Grant, error) {
 // optional "sel". Every item is checked as NewGrant checks it, and an unknown
 // member of an item is an error, so that a misspelled "sel" cannot widen the
 // grant.
+//
+// An absent "sel" is the root path for every selector. A "sel" that is there
+// must be a JSON object: "sel": null or "sel": [ ] would read as no selector
+// and so as the root, which widens the grant.
 func ParseGrant(data []byte) (Grant, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	var items []Item
-	if err := decoder.Decode(&items); err != nil {
+	var raw []rawItem
+	if err := decoder.Decode(&raw); err != nil {
 		return Grant{}, fmt.Errorf("read the grant: %w", err)
 	}
-	if items == nil {
+	if raw == nil {
 		return Grant{}, errors.New("read the grant: the grant is a JSON array of items")
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		return Grant{}, errors.New("read the grant: the data after the JSON array is not allowed")
+	}
+	items := make([]Item, 0, len(raw))
+	for i, item := range raw {
+		decoded, err := item.decode()
+		if err != nil {
+			return Grant{}, fmt.Errorf("grant item %d: %w", i, err)
+		}
+		items = append(items, decoded)
 	}
 	grant, err := NewGrant(items...)
 	if err != nil {
 		return Grant{}, err
 	}
 	return grant, nil
+}
+
+// rawItem is 1 item as it arrives: its selector map is kept as it was written,
+// so that an absent "sel" and a "sel" that is null are told apart.
+type rawItem struct {
+	// Cap is the item's capability.
+	Cap string `json:"cap"`
+	// Sel is the item's selector map as JSON, or nil when the item names no
+	// "sel".
+	Sel json.RawMessage `json:"sel"`
+}
+
+// decode returns 1 item, and refuses a "sel" that is no JSON object.
+func (it rawItem) decode() (Item, error) {
+	item := Item{Cap: it.Cap}
+	if len(it.Sel) == 0 {
+		return item, nil
+	}
+	trimmed := bytes.TrimSpace(it.Sel)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return Item{}, errors.New(`"sel" is no JSON object`)
+	}
+	var sel map[string]string
+	if err := json.Unmarshal(trimmed, &sel); err != nil {
+		return Item{}, fmt.Errorf(`read "sel": %w`, err)
+	}
+	item.Sel = sel
+	return item, nil
 }
 
 // Items returns the grant's items. The local grant has none.

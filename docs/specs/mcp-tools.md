@@ -53,6 +53,7 @@ request. The result is the response in the same form.
 | a repeated field | `{"type": "array", "items": <the value's schema>}` |
 | a map | `{"type": "object", "additionalProperties": <the value's schema>}` |
 | a message | an object with its fields' JSON names, and `"additionalProperties": false` |
+| `google.protobuf.NullValue` | `{"type": "null"}`, also as a repeated element and as a map value |
 | a message that reaches itself | 1 definition under `$defs`, keyed by its full name, and `{"$ref": "#/$defs/<full name>"}` |
 | a real oneof | `{"oneOf": [{"required": [a]}, {"required": [b]}, {"not": {"anyOf": [{"required": [a]}, {"required": [b]}]}}]}`: none or exactly 1 of its fields. Several oneofs are 1 entry each in `allOf` |
 | a proto3 optional field | its scalar's schema, and no oneof constraint (its oneof is synthetic) |
@@ -74,6 +75,15 @@ request. The result is the response in the same form.
 | `google.protobuf.StringValue` | `{"type": "string"}` |
 | `google.protobuf.BytesValue` | `{"type": "string", "contentEncoding": "base64"}` |
 | `google.protobuf.Any` | `{"type": "object"}`; an agent RPC must not carry 1 ([specs/options.md](options.md), rule 6) |
+
+A tool's arguments and its result are JSON objects, so the RPC's request message
+and its response message must have a JSON object form. `Struct` and `Empty` are
+objects, and they are allowed. A well-known type that protojson reads and writes
+as a string, a number, an array or a JSON null — `Timestamp`, `Duration`,
+`FieldMask`, `Value`, `ListValue`, and every wrapper type — has no such form, and
+the plugin refuses such an RPC with
+`<rpc>: an agent RPC's request <type> has no JSON object form`, or the same for
+the response.
 
 The root of every schema is an object: it carries
 `"$schema": "https://json-schema.org/draft/2020-12/schema"`, `"type": "object"`,
@@ -118,8 +128,18 @@ call.
 - A tool call runs with the caller of its server: the server puts
   `authz.WithCaller(ctx, caller)` before it calls the tool, so the generated
   permission check reads that caller.
+- 1 server has 1 caller for every call. A server that acts as the local user is
+  never shared with a caller that lodge authenticated: lodge sets the caller of
+  the app's API per request on the lodge socket, and an agent that lodge routes
+  reaches the app's API, not its MCP server. A transport that authenticates each
+  MCP call and picks the caller per call is a later phase.
 - The stdio server needs no token: the app builds it with `authz.LocalCaller()`,
   so each call runs as the local user with the local grant.
+- Each example of an agent RPC fits the tool's input schema, and the plugin
+  refuses an example that does not, with
+  `<rpc>: example <i> is no call of the tool "<tool>": <detail>`: an agent reads
+  the example, so it must be a call the tool accepts. An example writes 1 path
+  with its leading `/` and the JSON names of the fields.
 - An app passes its generated tools the API that its permission check wraps, so
   a call is checked before the handler runs.
 - The tools take a Go interface: an in-process handler satisfies it, and so does

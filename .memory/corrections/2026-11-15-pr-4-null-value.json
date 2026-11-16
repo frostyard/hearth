@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "internal/protoschema",
+  "correction": "google.protobuf.NullValue is an enum, but its proto3 JSON form is the JSON null, not a value's name: its schema is {\"type\": \"null\"} in a singular field, a repeated element and a map value.",
+  "evidence": "frostyard/hearth#4, cross-review (openai/gpt-6.1-sol) of head 56e7590, finding 4",
+  "promoted_to": "TestNullValue (internal/protoschema)"
+}

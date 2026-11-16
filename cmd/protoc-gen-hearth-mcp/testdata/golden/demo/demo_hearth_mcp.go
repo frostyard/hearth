@@ -189,7 +189,7 @@ func NotesTools(api NotesAgentAPI) []mcpserver.Tool {
 		},
 		{
 			Name:         "create",
-			Description:  "Create a note in a group.\nExample input: {\"note\": {\"group\": \"inbox\"}}\nExample input: {\"note\": {\"group\": \"/work/2026\"}}",
+			Description:  "Create a note in a group.\nExample input: {\"note\": {\"group\": \"/inbox\"}}\nExample input: {\"note\": {\"group\": \"/work/2026\"}}",
 			Effect:       mcpserver.EffectWrite,
 			InputSchema:  json.RawMessage(notesCreateInputSchema),
 			OutputSchema: json.RawMessage(notesCreateOutputSchema),

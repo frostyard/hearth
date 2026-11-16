@@ -96,12 +96,19 @@ if err := mcpserver.ServeStdio(ctx, server, os.Stdin, os.Stdout); err != nil {
 
 That is the `mcp` subcommand that an app's CLI serves to an editor or a script.
 
-### Over the lodge socket
+### 1 server, 1 caller
 
-An agent that lodge routes to the app arrives with `Lodge-Principal` and
-`Lodge-Grant` on the app's lodge socket, and the adapter sets that caller
-([the permissions guide](permissions.md)). The tools read it from the call's
-context, so the same server serves both callers, each with its own grant.
+`mcpserver.NewServer` fixes 1 caller for every call of its server. It is the
+caller of a process that serves 1 user: the stdio server of the local user, or a
+server that 1 agent's own process builds.
+
+Never give a server that acts as the local user to a lodge caller. A caller that
+lodge authenticates arrives with `Lodge-Principal` and `Lodge-Grant` on the
+app's lodge socket, and the adapter sets that caller for that **request** of the
+app's API ([the permissions guide](permissions.md)). Today lodge routes an agent
+to the app's API, not to its MCP server. A transport that authenticates each MCP
+call and picks the caller per call is a later phase; until then, build 1 server
+per caller, or serve the local user alone.
 
 ## Errors an agent reads
 
@@ -121,8 +128,11 @@ RPC's `agent_description`, or its leading comment, and 1 line per example:
 
 ```
 Create a note in a group.
-Example input: {"note": {"group": "inbox"}}
+Example input: {"note": {"group": "/inbox"}}
 ```
+
+An example must be 1 call the tool accepts, so write a path with its leading `/`
+and use the JSON names of the fields (`toGroup`, not `to_group`).
 
 Write the description for a reader who does not have the source: what the tool
 does, and when to call it.

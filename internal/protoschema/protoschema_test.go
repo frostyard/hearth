@@ -10,7 +10,9 @@ import (
 
 	"github.com/bufbuild/protocompile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/frostyard/hearth/internal/protoschema"
 )
@@ -33,6 +35,12 @@ enum Color {
 
 message Note {
   string id = 1;
+}
+
+message Nulls {
+  google.protobuf.NullValue none = 1;
+  repeated google.protobuf.NullValue nones = 2;
+  map<string, google.protobuf.NullValue> by_key = 3;
 }
 
 message Node {
@@ -82,6 +90,12 @@ message Everything {
   google.protobuf.Int64Value i64_value = 31;
   google.protobuf.StringValue string_value = 32;
   google.protobuf.BoolValue bool_value = 33;
+  google.protobuf.DoubleValue double_value = 34;
+  google.protobuf.FloatValue float_value = 35;
+  google.protobuf.Int32Value i32_value = 36;
+  google.protobuf.UInt32Value u32_value = 37;
+  google.protobuf.UInt64Value u64_value = 38;
+  google.protobuf.BytesValue bytes_value = 39;
 }
 `
 
@@ -446,4 +460,136 @@ func TestOneofValidates(t *testing.T) {
 			t.Errorf("%s validates", tc.instance)
 		}
 	}
+}
+
+// TestNonObjectRoot checks the rule of a root message's JSON object form: a
+// well-known type that protojson writes as a string, a number, an array or a
+// JSON null has no tool schema, and ForMessage refuses it.
+func TestNonObjectRoot(t *testing.T) {
+	messages := descriptors(t)
+	for _, tc := range []struct {
+		name  string
+		field string
+		form  string
+	}{
+		{"Timestamp", "at", "string"},
+		{"Duration", "duration", "string"},
+		{"FieldMask", "mask", "string"},
+		{"Value", "value", "any JSON value"},
+		{"ListValue", "listValue", "array"},
+		{"DoubleValue", "double_value", "number"},
+		{"FloatValue", "float_value", "number"},
+		{"Int64Value", "i64Value", "string"},
+		{"UInt64Value", "u64_value", "string"},
+		{"Int32Value", "i32_value", "integer"},
+		{"UInt32Value", "u32_value", "integer"},
+		{"BoolValue", "boolValue", "boolean"},
+		{"StringValue", "stringValue", "string"},
+		{"BytesValue", "bytes_value", "string"},
+	} {
+		md := fieldMessage(t, messages, tc.field)
+		if protoschema.HasObjectForm(md) {
+			t.Errorf("HasObjectForm(%s) = true, and its proto3 JSON form is a %s", md.FullName(), tc.form)
+		}
+		if _, err := protoschema.ForMessage(md); err == nil {
+			t.Errorf("ForMessage(%s) passed, and its proto3 JSON form is a %s", md.FullName(), tc.form)
+		} else if !strings.Contains(err.Error(), "its proto3 JSON form is no object") {
+			t.Errorf("ForMessage(%s) = %q, want an error about the object form", md.FullName(), err)
+		}
+	}
+
+	// Struct and Empty are objects, and they keep their schema.
+	for _, name := range []string{"struct", "empty"} {
+		md := fieldMessage(t, messages, name)
+		if !protoschema.HasObjectForm(md) {
+			t.Errorf("HasObjectForm(%s) = false, and it is an object", md.FullName())
+		}
+		data, err := protoschema.ForMessage(md)
+		if err != nil {
+			t.Fatalf("ForMessage(%s): %v", md.FullName(), err)
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(data, &schema); err != nil {
+			t.Fatal(err)
+		}
+		if schema["type"] != "object" {
+			t.Errorf("ForMessage(%s) = %v, want an object", md.FullName(), schema)
+		}
+	}
+}
+
+// fieldMessage returns the message of 1 field of Everything.
+func fieldMessage(t *testing.T, messages map[string]protoreflect.MessageDescriptor, name string) protoreflect.MessageDescriptor {
+	t.Helper()
+	fields := messages["Everything"].Fields()
+	fd := fields.ByJSONName(name)
+	if fd == nil {
+		fd = fields.ByName(protoreflect.Name(name))
+	}
+	if fd == nil {
+		t.Fatalf("Everything has no field %q", name)
+	}
+	return fd.Message()
+}
+
+// TestNullValue checks google.protobuf.NullValue: its proto3 JSON form is the
+// JSON null, as protojson writes it, and not a value's name.
+func TestNullValue(t *testing.T) {
+	messages := descriptors(t)
+	for name, want := range map[string]map[string]any{
+		"none":  {"type": "null"},
+		"nones": {"items": map[string]any{"type": "null"}, "type": "array"},
+		"byKey": {"additionalProperties": map[string]any{"type": "null"}, "type": "object"},
+	} {
+		got := property(t, messages, "Nulls", name)
+		if !equalJSON(got, want) {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+	}
+
+	// The real protojson output of a message with the field validates.
+	md := messages["Nulls"]
+	message := dynamicpb.NewMessage(md)
+	fields := md.Fields()
+	list := message.Mutable(fields.ByName("nones")).List()
+	list.Append(protoreflect.ValueOfEnum(0))
+	mapping := message.Mutable(fields.ByName("by_key")).Map()
+	mapping.Set(protoreflect.ValueOfString("k").MapKey(), protoreflect.ValueOfEnum(0))
+	data, err := protojson.Marshal(message)
+	if err != nil {
+		t.Fatalf("protojson.Marshal: %v", err)
+	}
+	schema := compile(t, messages, "Nulls")
+	for _, instance := range []string{string(data), `{"none": null, "nones": [null], "byKey": {"k": null}}`} {
+		value, err := jsonschema.UnmarshalJSON(strings.NewReader(instance))
+		if err != nil {
+			t.Fatalf("%s: %v", instance, err)
+		}
+		if err := schema.Validate(value); err != nil {
+			t.Errorf("the protojson output %s does not validate: %v", instance, err)
+		}
+	}
+}
+
+// compile returns the compiled schema of 1 message.
+func compile(t *testing.T, messages map[string]protoreflect.MessageDescriptor, name string) *jsonschema.Schema {
+	t.Helper()
+	data, err := protoschema.ForMessage(messages[name])
+	if err != nil {
+		t.Fatalf("ForMessage(%s): %v", name, err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	compiler := jsonschema.NewCompiler()
+	id := "https://example.com/" + name + ".json"
+	if err := compiler.AddResource(id, doc); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	schema, err := compiler.Compile(id)
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return schema
 }

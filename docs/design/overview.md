@@ -112,7 +112,9 @@ and sets the local user's caller.
 JSON Schema of the proto3 JSON form of its request and response.
 `mcpserver/` serves those tools with the Go MCP SDK: it puts the caller in the
 call's context, returns the response as structured content, and turns a refusal
-into a tool error with the permission runtime's own text. `mcpserver.ServeStdio`
+into a tool error with the permission runtime's own text. 1 server has 1 caller
+for every call, so an app builds 1 server per caller and never gives a
+local-user server to a caller that lodge authenticated. `mcpserver.ServeStdio`
 serves the same tools on 2 streams, as the local user, with no token.
 [specs/mcp-tools.md](../specs/mcp-tools.md) is the exact contract.
 

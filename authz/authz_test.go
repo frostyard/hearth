@@ -397,3 +397,37 @@ func TestNewGrantChecksItems(t *testing.T) {
 		t.Errorf("the grant changed with the items it returned: %v", err)
 	}
 }
+
+// TestParseGrantNullSel checks the fail-closed rule of a "sel" that is there: a
+// null, an array, a number or a string reads as no selector, and so as the root
+// path, so it is refused, while an absent "sel" stays the root.
+func TestParseGrantNullSel(t *testing.T) {
+	for _, invalid := range []string{
+		`[{"cap":"demo:read","sel":null}]`,
+		`[{"cap":"demo:read","sel":[]}]`,
+		`[{"cap":"demo:read","sel":[{"group":"/work"}]}]`,
+		`[{"cap":"demo:read","sel":5}]`,
+		`[{"cap":"demo:read","sel":"/work"}]`,
+		`[{"cap":"demo:read","sel":true}]`,
+		`[{"cap":"demo:read"},{"cap":"demo:write","sel":null}]`,
+	} {
+		grant, err := authz.ParseGrant([]byte(invalid))
+		if err == nil {
+			t.Fatalf("ParseGrant(%s) passed, and a null sel would allow every path: %+v", invalid, grant.Items())
+		}
+		if !strings.Contains(err.Error(), `"sel" is no JSON object`) {
+			t.Errorf("ParseGrant(%s) = %q, want an error that names the sel", invalid, err)
+		}
+	}
+
+	// An absent "sel" is still the root path.
+	grant, err := authz.ParseGrant([]byte(`[{"cap":"demo:read"},{"cap":"demo:read","sel":{}}]`))
+	if err != nil {
+		t.Fatalf("ParseGrant: %v", err)
+	}
+	for _, path := range []string{"/", "/work", "/private"} {
+		if err := grant.Check("demo:read", authz.Sel{Selector: "group", Path: path}); err != nil {
+			t.Errorf("Check on %s: %v", path, err)
+		}
+	}
+}

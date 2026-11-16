@@ -1,16 +1,21 @@
 package e2e_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/santhosh-tekuri/jsonschema/v6"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/frostyard/hearth/authz"
 	"github.com/frostyard/hearth/internal/e2e"
@@ -241,4 +246,181 @@ func TestMissingHookFailsBuild(t *testing.T) {
 	if !strings.Contains(string(out), "AuthorizeGetNote") {
 		t.Errorf("the build's error does not name the missing hook AuthorizeGetNote:\n%s", out)
 	}
+}
+
+// TestListNotesCanonicalGroups checks that the app compares groups in their
+// canonical form: the request's group is normalized to Unicode NFC before it is
+// compared with a stored note's group, so 2 spellings of 1 group are 1 group.
+func TestListNotesCanonicalGroups(t *testing.T) {
+	const (
+		nfc = "/Caf\u00e9"
+		nfd = "/Cafe\u0301"
+	)
+	for _, tc := range []struct {
+		name string
+		seed string
+		want string
+	}{
+		{"an NFC note and an NFD request", nfc, nfd},
+		{"an NFD note and an NFC request", nfd, nfc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := e2e.New()
+			app.SeedNote("n-1", tc.seed)
+			api := app.Wired()
+			ctx := caller(t, authz.LocalCaller().Grant)
+
+			// The note's own group, spelled the other way.
+			response, err := api.ListNotes(ctx, &demov1.ListNotesRequest{Group: tc.want})
+			if err != nil {
+				t.Fatalf("ListNotes on %q: %v", tc.want, err)
+			}
+			if got := response.GetNotes(); len(got) != 1 || got[0].GetId() != "n-1" {
+				t.Errorf("ListNotes on %q reads %v, want the note n-1", tc.want, got)
+			}
+
+			// The group itself holds the descendant, and the parent holds both.
+			app.SeedNote("n-2", nfc+"/2026")
+			for _, want := range []struct {
+				group string
+				ids   []string
+			}{
+				{tc.want, []string{"n-1", "n-2"}},
+				{tc.want + "/2026", []string{"n-2"}},
+				{authz.Root, []string{"n-1", "n-2"}},
+			} {
+				response, err := api.ListNotes(ctx, &demov1.ListNotesRequest{Group: want.group})
+				if err != nil {
+					t.Fatalf("ListNotes on %q: %v", want.group, err)
+				}
+				ids := make([]string, 0, len(response.GetNotes()))
+				for _, note := range response.GetNotes() {
+					ids = append(ids, note.GetId())
+				}
+				if !slices.Equal(ids, want.ids) {
+					t.Errorf("ListNotes on %q reads %q, want %q", want.group, ids, want.ids)
+				}
+			}
+		})
+	}
+
+	// A narrow grant on the NFC path covers the NFD request, and the list keeps
+	// the notes of that group only.
+	app := e2e.New()
+	app.SeedNote("n-1", nfc)
+	app.SeedNote("n-2", "/other")
+	api := app.Wired()
+	response, err := api.ListNotes(caller(t, grant(t, item("demo:read", nfc))), &demov1.ListNotesRequest{Group: nfd})
+	if err != nil {
+		t.Fatalf("ListNotes with the narrow grant: %v", err)
+	}
+	if got := response.GetNotes(); len(got) != 1 || got[0].GetId() != "n-1" {
+		t.Errorf("the narrow grant reads %v, want the note n-1 only", got)
+	}
+}
+
+// TestExamplesFitTheTools checks every example that the demo's generated tools
+// carry: it fits the tool's input schema, and each example of an RPC that reads
+// a selector is a call the wired API accepts as the local user.
+func TestExamplesFitTheTools(t *testing.T) {
+	calls := map[string]struct {
+		// selector is set for an RPC whose request carries a selector value.
+		selector bool
+		// request returns a new request message of the RPC.
+		request func() proto.Message
+		// call runs the RPC.
+		call func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error
+	}{
+		"get_note": {false, func() proto.Message { return &demov1.GetNoteRequest{} }, func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error {
+			_, err := api.GetNote(ctx, request.(*demov1.GetNoteRequest))
+			return err
+		}},
+		"list_notes": {true, func() proto.Message { return &demov1.ListNotesRequest{} }, func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error {
+			_, err := api.ListNotes(ctx, request.(*demov1.ListNotesRequest))
+			return err
+		}},
+		"create_note": {true, func() proto.Message { return &demov1.CreateNoteRequest{} }, func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error {
+			_, err := api.CreateNote(ctx, request.(*demov1.CreateNoteRequest))
+			return err
+		}},
+		"publish_note": {false, func() proto.Message { return &demov1.PublishNoteRequest{} }, func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error {
+			_, err := api.PublishNote(ctx, request.(*demov1.PublishNoteRequest))
+			return err
+		}},
+		"move_note": {true, func() proto.Message { return &demov1.MoveNoteRequest{} }, func(ctx context.Context, api demov1.NoteServiceAPI, request proto.Message) error {
+			_, err := api.MoveNote(ctx, request.(*demov1.MoveNoteRequest))
+			return err
+		}},
+	}
+
+	app := e2e.New()
+	app.SeedNote("n-1", "/work")
+	api := app.Wired()
+	ctx := caller(t, authz.LocalCaller().Grant)
+
+	var checked, called int
+	for _, tool := range demov1.NoteServiceTools(api) {
+		agentCall, ok := calls[tool.Name]
+		if !ok {
+			t.Fatalf("the tool %q has no call in the test", tool.Name)
+		}
+		schema := compileInputSchema(t, tool.Name, tool.InputSchema)
+		for _, example := range examplesOf(tool.Description) {
+			value, err := jsonschema.UnmarshalJSON(strings.NewReader(example))
+			if err != nil {
+				t.Fatalf("the example %s of the tool %q is no JSON: %v", example, tool.Name, err)
+			}
+			if err := schema.Validate(value); err != nil {
+				t.Errorf("the example %s of the tool %q does not fit its input schema: %v", example, tool.Name, err)
+			}
+			checked++
+			if !agentCall.selector {
+				continue
+			}
+			request := agentCall.request()
+			if err := protojson.Unmarshal([]byte(example), request); err != nil {
+				t.Fatalf("the example %s of the tool %q: %v", example, tool.Name, err)
+			}
+			if err := agentCall.call(ctx, api, request); err != nil {
+				t.Errorf("the example %s of the tool %q is no call: %v", example, tool.Name, err)
+			}
+			called++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("the demo's tools carry no example")
+	}
+	if called == 0 {
+		t.Fatal("no example of a selector RPC was called")
+	}
+}
+
+// examplesOf returns the examples of 1 tool, as its description carries them.
+func examplesOf(description string) []string {
+	var out []string
+	for line := range strings.SplitSeq(description, "\n") {
+		if example, ok := strings.CutPrefix(line, "Example input: "); ok {
+			out = append(out, example)
+		}
+	}
+	return out
+}
+
+// compileInputSchema compiles 1 tool's input schema.
+func compileInputSchema(t *testing.T, tool string, data []byte) *jsonschema.Schema {
+	t.Helper()
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("the input schema of %q: %v", tool, err)
+	}
+	compiler := jsonschema.NewCompiler()
+	id := "https://example.com/hearth/" + tool + ".json"
+	if err := compiler.AddResource(id, doc); err != nil {
+		t.Fatalf("the input schema of %q: %v", tool, err)
+	}
+	schema, err := compiler.Compile(id)
+	if err != nil {
+		t.Fatalf("the input schema of %q: %v", tool, err)
+	}
+	return schema
 }

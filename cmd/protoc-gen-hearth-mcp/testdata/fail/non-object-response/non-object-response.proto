@@ -1,0 +1,29 @@
+// The non-object-response fail case: an agent RPC whose response is
+// google.protobuf.StringValue, which protojson reads and writes as a string, so
+// the tool can have no object schema.
+syntax = "proto3";
+
+package frostyard.app.v1;
+
+import "frostyard/hearth/v1/options.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "example.com/appv1;appv1";
+
+// IdRequest names the note to read.
+message IdRequest {
+  // id identifies the note.
+  string id = 1;
+}
+
+// Things serves the app.
+service Things {
+  // Name reads the name of a note.
+  rpc Name(IdRequest) returns (google.protobuf.StringValue) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_AGENT
+    };
+  }
+}
