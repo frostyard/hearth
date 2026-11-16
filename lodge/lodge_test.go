@@ -159,7 +159,9 @@ func TestWrongPeerUIDRefused(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
-	if _, err := io.WriteString(conn, "GET /notes HTTP/1.1\r\nHost: lodge\r\n\r\n"); err != nil {
+	// Connection: close makes a server that wrongly answers close the stream
+	// after its response, so the test fails on its assertion and never waits.
+	if _, err := io.WriteString(conn, "GET /notes HTTP/1.1\r\nHost: lodge\r\nConnection: close\r\n\r\n"); err != nil {
 		t.Fatalf("write the request: %v", err)
 	}
 	// The server closes the connection without a response: the read ends at the
