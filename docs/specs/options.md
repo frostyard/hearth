@@ -76,6 +76,13 @@ service Marks {
 Any other parameter is an error. The parameters arrive as
 `app=<id>,version=<major.minor.patch>`.
 
+### proto3 optional
+
+The plugin declares `FEATURE_PROTO3_OPTIONAL` in its
+`CodeGeneratorResponse`. Without that feature protoc and buf refuse the plugin
+with an error that names the file with the `optional` field, so a hearth app
+may use a proto3 `optional` field.
+
 ## Rules
 
 Only the files in `file_to_generate` are read. Generation fails on each of these
@@ -104,6 +111,12 @@ written when a rule fails.
    at its dotted path of proto field names, such as `folder.name`. The
    selector's name matches `^[a-z][a-z0-9_]*$`, and the field is a singular
    `string`: not repeated and not a map.
+   A selector must be on a path of **singular** message fields. Generation
+   fails when a selector field is found inside a map value message or inside a
+   repeated message field, followed recursively, with
+   `field <path> carries the selector "<name>" inside a map or a repeated field; a selector must be on a path of singular fields`:
+   a map value or a repeated message has no single value for the permission
+   check to read.
 8. The tool name is the method name in snake_case: an uppercase letter starts a
    word (`CreateBookmark` is `create_bookmark`, and `GetURL` is `get_url`).
    2 agent RPCs with the same tool name are an error.

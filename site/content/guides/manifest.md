@@ -34,9 +34,15 @@ writes it.
 
 ```sh
 # the app's gate, against the default branch
-git show origin/main:gen/manifest.json > /tmp/old-manifest.json
-hearth manifest diff /tmp/old-manifest.json gen/manifest.json
+old="$(mktemp -d)/manifest.json"
+git show origin/main:gen/manifest.json >"$old" 2>/dev/null || rm -f "$old"
+hearth manifest diff "$old" gen/manifest.json
 ```
+
+`mktemp -d` gives a directory that the shell owns. When the default branch has
+no manifest yet, `git show` writes an empty file there, so the script removes
+it: the command then takes the "no old manifest" path and exits 0, instead of
+refusing an empty file with exit 2.
 
 It prints 1 line for each breaking change, then the verdict:
 
@@ -69,9 +75,9 @@ A breaking change needs the app's next major version:
   `0.3.1` to `0.3.2`.
 
 A new app has no old manifest, so the command prints
-`no old manifest: nothing to compare` and exits 0. Use `git show`'s failure as
-that case, or skip the step while the app has no manifest on the default
-branch.
+`no old manifest: nothing to compare` and exits 0. The script above leaves OLD
+absent for that case; a redirect that writes an empty file would instead give
+exit 2.
 
 ## Validate 1 manifest
 

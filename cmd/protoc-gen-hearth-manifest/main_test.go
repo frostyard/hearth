@@ -163,6 +163,20 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+// TestProto3Optional checks that the plugin declares the proto3 optional
+// feature: protoc and buf refuse a plugin that does not, for a file with an
+// optional field. The bookmarks golden case has 1.
+func TestProto3Optional(t *testing.T) {
+	response, err := Generate(compileCase(t, filepath.Join("testdata", "golden", "bookmarks"), "app=marks,version=0.1.0"))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got, want := response.GetSupportedFeatures(), uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL); got&want == 0 {
+		t.Errorf("the plugin's supported features are %d, and they must hold FEATURE_PROTO3_OPTIONAL (%d)", got, want)
+	}
+	_ = manifestOf(t, response)
+}
+
 // TestFail checks that an invalid app fails generation, with 1 line for each
 // problem, and writes no file.
 func TestFail(t *testing.T) {

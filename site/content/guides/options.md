@@ -78,11 +78,23 @@ message FolderRef {
 ```
 
 The field must be a singular `string`. hearth finds it through the request's
-message fields, so `folder.name` in this request is the selector `folder`:
+singular message fields, so `folder.name` in this request is the selector
+`folder`:
 
 ```proto
 message ListBookmarksRequest {
   FolderRef folder = 1;
+}
+```
+
+A selector must be on a path of singular fields. A map value or a repeated
+message has no single value for the permission check to read, so generation
+fails when a selector field sits inside 1 of them:
+
+```proto
+message ListBookmarksRequest {
+  // Generation fails: the selector is inside a map value.
+  map<string, FolderRef> folders = 1;
 }
 ```
 
@@ -132,6 +144,10 @@ buf generate
 
 The plugin writes `gen/manifest.json`. When a rule fails, it writes nothing and
 prints 1 line for each problem; `buf` shows the lines and exits with an error.
+
+The plugin declares the proto3 `optional` feature, so a message may use an
+`optional` field. Without that declaration, protoc and buf refuse the plugin
+for a file that holds 1.
 
 Look up every member of the file it writes in the
 [manifest format](../reference/manifest.md).

@@ -15,8 +15,8 @@ message Note {
   string id = 1;
   // group is the selector the note is filed under.
   string group = 2 [(frostyard.hearth.v1.hearth_selector) = "group"];
-  // text is the note's text.
-  string text = 3;
+  // text is the note's text. It is optional, so a note can be a title alone.
+  optional string text = 3;
 }
 
 // NoteService serves notes.

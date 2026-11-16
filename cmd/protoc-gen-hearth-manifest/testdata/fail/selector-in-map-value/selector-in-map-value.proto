@@ -1,0 +1,50 @@
+// The selector-in-map-value case: a UI-only RPC whose request holds a map of
+// messages, 1 of which carries a selector.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// FolderRef names the folder that a request is scoped to.
+message FolderRef {
+  // name is the folder's name.
+  string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// ListThingsRequest holds the things to list, by folder name.
+message ListThingsRequest {
+  // folders are the folders to list.
+  map<string, FolderRef> folders = 1;
+}
+
+// ListThingsResponse carries the things of the folders.
+message ListThingsResponse {
+  // things are the things of the folders.
+  repeated string things = 1;
+}
+
+// ThingCreated is published when a thing is created, and carries no selector.
+message ThingCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "thing"
+    verb: "created"
+    read_permission: "fail:read"
+  };
+  // id identifies the thing.
+  string id = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // ListThings lists the things of the folders.
+  rpc ListThings(ListThingsRequest) returns (ListThingsResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}

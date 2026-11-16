@@ -17,8 +17,9 @@ message Bookmark {
   string id = 1;
   // url is the address the bookmark points at.
   string url = 2;
-  // title is the bookmark's title.
-  string title = 3;
+  // title is the bookmark's title. It is optional, so a record can say that
+  // the bookmark has no title yet.
+  optional string title = 3;
 }
 
 // FolderRef names the folder that a request is scoped to.

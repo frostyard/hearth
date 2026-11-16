@@ -283,6 +283,94 @@ service Things {
 	}
 }
 
+// TestSelectorInsideCompound checks rule 7's path rule: a selector is allowed
+// only on a path of singular message fields. A map value or a repeated message
+// has no single value for the permission check, so generation refuses a
+// selector inside 1 of them, for a UI-only RPC as well as for an agent RPC.
+func TestSelectorInsideCompound(t *testing.T) {
+	const header = `syntax = "proto3";
+package frostyard.app.v1;
+import "frostyard/hearth/v1/options.proto";
+option go_package = "example.com/app/v1;appv1";
+
+message FolderRef {
+  string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+message ListResponse {}
+
+service Things {
+  rpc List(ListRequest) returns (ListResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}
+`
+	for _, tc := range []struct {
+		name    string
+		request string
+		want    string // a substring of the error; empty for a valid app
+	}{
+		{
+			name:    "a singular message field",
+			request: "message ListRequest { FolderRef folder = 1; }",
+		},
+		{
+			name:    "a map value message",
+			request: "message ListRequest { map<string, FolderRef> folders = 1; }",
+			want:    `field folders.name carries the selector "folder" inside a map or a repeated field`,
+		},
+		{
+			name:    "a repeated message field",
+			request: "message ListRequest { repeated FolderRef folders = 1; }",
+			want:    `field folders.name carries the selector "folder" inside a map or a repeated field`,
+		},
+		{
+			name:    "a repeated message field under a singular message",
+			request: "message Wrapper { repeated FolderRef folders = 1; }\nmessage ListRequest { Wrapper wrapper = 1; }",
+			want:    `field wrapper.folders.name carries the selector "folder" inside a map or a repeated field`,
+		},
+		{
+			name:    "a map value message under a singular message",
+			request: "message Wrapper { map<string, FolderRef> folders = 1; }\nmessage ListRequest { Wrapper wrapper = 1; }",
+			want:    `field wrapper.folders.name carries the selector "folder" inside a map or a repeated field`,
+		},
+		{
+			name:    "a cycle, with a selector on the way",
+			request: "message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = \"folder\"]; Node child = 2; }\nmessage ListRequest { Node node = 1; }",
+		},
+		{
+			// The cycle stops the walk: the selector is already a problem, or
+			// already recorded, at the singular path that reaches it first.
+			name:    "a cycle through a repeated message stops at the cycle",
+			request: "message Node { string name = 1 [(frostyard.hearth.v1.hearth_selector) = \"folder\"]; repeated Node children = 2; }\nmessage ListRequest { Node node = 1; }",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := header + tc.request
+			app, err := buildApp(t, "app=app,version=0.1.0", map[string]string{"app.proto": src}, "app.proto")
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Build: %v", err)
+				}
+				if len(app.Operations[0].Selectors) != 1 {
+					t.Fatalf("the selectors = %+v, want 1", app.Operations[0].Selectors)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Build succeeded, and its error must contain %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("the error does not contain %q:\n%v", tc.want, err)
+			}
+		})
+	}
+}
+
 // TestOnlyGeneratedFiles checks that a file that is imported but not generated
 // is not read.
 func TestOnlyGeneratedFiles(t *testing.T) {

@@ -47,6 +47,9 @@ func Generate(req *pluginpb.CodeGeneratorRequest) (*pluginpb.CodeGeneratorRespon
 // generate builds the app's model, writes its manifest, and adds the file to
 // the plugin's response.
 func generate(gen *protogen.Plugin) error {
+	// protoc and buf refuse a plugin that does not declare this feature for a
+	// file with a proto3 optional field, so both main and Generate declare it.
+	gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 	app, err := model.Build(gen)
 	if err != nil {
 		return err

@@ -254,7 +254,7 @@ func (b *builder) addMethod(method *protogen.Method) {
 		}
 	}
 
-	op.Selectors = b.selectors(name, method.Desc.Input(), "", map[protoreflect.FullName]bool{})
+	op.Selectors = b.selectors(name, method.Desc.Input(), "", false, map[protoreflect.FullName]bool{})
 	b.app.Operations = append(b.app.Operations, op)
 }
 
@@ -317,9 +317,11 @@ func (b *builder) checkAgentMessage(name string, message protoreflect.MessageDes
 }
 
 // selectors collects rule 7's selector fields of 1 request message: the fields
-// with hearth_selector, followed through message fields, as dotted paths of
-// proto field names. onPath stops a cycle.
-func (b *builder) selectors(name string, message protoreflect.MessageDescriptor, path string, onPath map[protoreflect.FullName]bool) []Selector {
+// with hearth_selector, followed through singular message fields, as dotted
+// paths of proto field names. A selector must be on a path of singular fields:
+// a map value or a repeated message has no single value for the permission
+// check, so a selector inside 1 of them is a problem. onPath stops a cycle.
+func (b *builder) selectors(name string, message protoreflect.MessageDescriptor, path string, inside bool, onPath map[protoreflect.FullName]bool) []Selector {
 	if onPath[message.FullName()] {
 		return nil
 	}
@@ -337,14 +339,23 @@ func (b *builder) selectors(name string, message protoreflect.MessageDescriptor,
 				b.problems.addf("%s: the selector name %q of field %s must match %s", name, selector, fieldPath, selectorPattern)
 			case field.Kind() != protoreflect.StringKind || field.IsList() || field.IsMap():
 				b.problems.addf("%s: field %s carries the selector %q, so it must be a singular string", name, fieldPath, selector)
+			case inside:
+				b.problems.addf("%s: field %s carries the selector %q inside a map or a repeated field; a selector must be on a path of singular fields", name, fieldPath, selector)
 			default:
 				out = append(out, Selector{Field: fieldPath, Selector: selector})
 			}
 		}
-		if field.IsMap() || (field.Kind() != protoreflect.MessageKind && field.Kind() != protoreflect.GroupKind) {
+		if field.IsMap() {
+			value := field.MapValue()
+			if value.Kind() == protoreflect.MessageKind || value.Kind() == protoreflect.GroupKind {
+				out = append(out, b.selectors(name, value.Message(), fieldPath, true, onPath)...)
+			}
 			continue
 		}
-		out = append(out, b.selectors(name, field.Message(), fieldPath, onPath)...)
+		if field.Kind() != protoreflect.MessageKind && field.Kind() != protoreflect.GroupKind {
+			continue
+		}
+		out = append(out, b.selectors(name, field.Message(), fieldPath, inside || field.IsList(), onPath)...)
 	}
 	return out
 }
