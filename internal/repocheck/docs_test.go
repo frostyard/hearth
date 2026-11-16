@@ -20,8 +20,10 @@ var (
 	codeSpan   = regexp.MustCompile("`[^`]*`")
 	inlineLink = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	// An underscore emphasis outside code: _text_ or __text__, its opening
-	// run after no letter or digit, its closing run before none
-	// (CommonMark's rule for _, so snake_case stays text).
+	// run after no letter or digit, its closing run before none, so
+	// snake_case stays text. It is a subset of CommonMark's rule: it does
+	// not count delimiters (_word__ loses both closing underscores), and
+	// it does not know escapes or emphasis that holds an underscore.
 	underscoreEmphasis = regexp.MustCompile(`(^|[^\p{L}\p{N}_])_+([^\s_](?:[^_]*[^\s_])?)_+($|[^\p{L}\p{N}_])`)
 	indexedDocs        = []string{"adr", "design", "specs", "plans"}
 )
