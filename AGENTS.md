@@ -137,6 +137,12 @@ the in-process and NATS transports, and the example app of
   a breaking change of the format changes its major version.
 - **No private hosts.** Docs write `example.com`, and never a tailnet, device or
   home-network name or a real address.
+- **A synced skill is core's.** A directory of `.agents/skills/` with a
+  `.synced-from-core` marker comes from frostyard/core's skills sync (core
+  ADR-0026): never edit it here; a fix goes to core. The private-host check
+  skips such a directory, because its text is core's and core reviews it. The
+  link check still reads it, with GitHub's anchors (the rendered heading, so
+  underscore emphasis is not in the anchor).
 - **1 MCP server has 1 caller.** `mcpserver.NewServer` fixes the caller of every
   call and replaces the caller of the context it is given, so a server built
   with `authz.LocalCaller()` never serves a caller that lodge authenticated.

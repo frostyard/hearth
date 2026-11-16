@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "internal/repocheck",
+  "correction": "The link check made an anchor from the heading's source, so the underscores of emphasis such as _(Go 1.22+)_ stayed in it and GitHub's real anchors failed; the private-host check read the skills that core's sync manages, text this repository must not edit. The anchor now comes from the rendered heading, and the private-host check skips a .agents/skills directory with a .synced-from-core marker.",
+  "evidence": "frostyard/hearth#8, verify job of run 43887878100: TestRelativeLinksResolve (golang-modernize/references/versions.md) and TestNoPrivateHosts (golang-security/references)",
+  "promoted_to": "TestSlugMatchesGitHub, TestCoreManaged (internal/repocheck); AGENTS.md, Invariants"
+}
