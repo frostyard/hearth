@@ -1,0 +1,23 @@
+{
+  "hearth": 1,
+  "app": "min",
+  "version": "1.0.0",
+  "capabilities": [
+    "min:read"
+  ],
+  "selectors": [],
+  "operations": [
+    {
+      "name": "frostyard.min.v1.ThingService.GetThing",
+      "permission": "min:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [],
+      "tool": "get_thing"
+    }
+  ],
+  "events": []
+}

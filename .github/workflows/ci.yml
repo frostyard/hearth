@@ -1,6 +1,8 @@
-# CI workflow (ADR-0021: SHA-pinned actions, least privilege): the job verify
-# is the required check. Actions use full commit SHA pins, the token has only
-# contents read, and checkout does not persist credentials.
+# CI workflow (frostyard/core ADR-0021: SHA-pinned actions, least privilege;
+# ADR-0083: make ci is the same gate locally). The job verify is the required
+# check and has no name key, so its context stays "verify". Actions use full
+# commit SHA pins, the token has only contents read, and checkout does not
+# persist credentials.
 name: CI
 
 on:
@@ -19,7 +21,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -27,13 +29,35 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      # Node comes from mise.toml and mise.lock (ADR-0043), checksum-verified,
-      # the same way a developer's `mise install` does.
+      # Go comes from go.mod's go line (frostyard/core ADR-0043).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The tools of make ci come from mise.toml and mise.lock (ADR-0043),
+      # checksum-verified, the same way a developer's `mise install` does.
       - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         with:
           install: true
-          install_args: node
+          install_args: golangci-lint buf protoc-gen-go
           cache: true
       - run: make ci BASE="$BASE"
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+
+  # A vulnerability database and a module download need the network, so this
+  # check is no part of make ci and runs as its own job (ADR-0083).
+  vulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make vulncheck

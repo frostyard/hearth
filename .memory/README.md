@@ -50,14 +50,17 @@ each add a record add 2 different files, so they do not conflict.
   Learn station).
 
 This repository has 1 form: the folder. The old single file does not come
-back. Its records moved here as `legacy-` record files.
+back; the check refuses it if it does. hearth started from a template, so its
+first records carry a `legacy-` slug.
 
 ## Tools
 
-- `make verify` runs this repository's `scripts/check-corrections.mjs`, which
-  checks the folder form. `make ci BASE=<ref>` adds `--base <ref>`: it also
-  checks that no record is removed, renamed or changed except a filled empty
-  `promoted_to`.
+- `make verify` runs the Go test `internal/workflowcheck`, which checks the
+  folder form, byte for byte against the text that JavaScript's
+  `JSON.stringify(record, null, 2)` gives, escapes and lone surrogates
+  included. `make ci BASE=<ref>` adds `make corrections-base`: it runs
+  `internal/cmd/corrections-base`, which also checks that no record is
+  removed, renamed or changed except a filled empty `promoted_to`.
 - Core's `new-correction.mjs` is an optional helper that writes 1 record file
   in canonical form
   ([source](https://github.com/frostyard/core/blob/main/scripts/new-correction.mjs)).

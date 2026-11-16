@@ -1,0 +1,34 @@
+// The minimal golden case: 1 agent RPC and no event.
+syntax = "proto3";
+
+package frostyard.min.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "github.com/frostyard/hearth/cmd/protoc-gen-hearth-manifest/testdata/golden/minimal;minv1";
+
+// GetThingRequest names the thing to read.
+message GetThingRequest {
+  // id identifies the thing.
+  string id = 1;
+}
+
+// GetThingResponse carries the thing.
+message GetThingResponse {
+  // thing is what was read.
+  string thing = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // GetThing reads 1 thing.
+  rpc GetThing(GetThingRequest) returns (GetThingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "min:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Read 1 thing by its id."
+    };
+  }
+}

@@ -1,0 +1,175 @@
+// The bookmarks golden case: a service with read, write and outward RPCs, a
+// UI-only RPC and agent RPCs, a selector found through a nested message, an
+// RPC with no selector, 2 events that carry a selector, and 1 event whose read
+// permission no RPC scopes.
+syntax = "proto3";
+
+package frostyard.frostmarks.v1;
+
+import "frostyard/hearth/v1/options.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "github.com/frostyard/hearth/cmd/protoc-gen-hearth-manifest/testdata/golden/bookmarks;bookmarksv1";
+
+// Bookmark is 1 bookmark.
+message Bookmark {
+  // id identifies the bookmark.
+  string id = 1;
+  // url is the address the bookmark points at.
+  string url = 2;
+  // title is the bookmark's title. It is optional, so a record can say that
+  // the bookmark has no title yet.
+  optional string title = 3;
+}
+
+// FolderRef names the folder that a request is scoped to.
+message FolderRef {
+  // name is the folder's name.
+  string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// GetBookmarkRequest names the bookmark to read.
+message GetBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// GetBookmarkResponse carries the bookmark.
+message GetBookmarkResponse {
+  // bookmark is the bookmark that was read.
+  Bookmark bookmark = 1;
+}
+
+// ListBookmarksRequest names the folder to list.
+message ListBookmarksRequest {
+  // folder is the folder to list.
+  FolderRef folder = 1;
+}
+
+// ListBookmarksResponse carries the bookmarks of the folder.
+message ListBookmarksResponse {
+  // bookmarks are the bookmarks of the folder.
+  repeated Bookmark bookmarks = 1;
+}
+
+// CreateBookmarkRequest carries the bookmark to write.
+message CreateBookmarkRequest {
+  // folder is the folder to write to.
+  FolderRef folder = 1;
+  // bookmark is the bookmark to write.
+  Bookmark bookmark = 2;
+}
+
+// CreateBookmarkResponse carries the bookmark that was written.
+message CreateBookmarkResponse {
+  // bookmark is the bookmark that was written.
+  Bookmark bookmark = 1;
+}
+
+// DeleteBookmarkRequest names the bookmark to delete.
+message DeleteBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// DeleteBookmarkResponse reports the deletion.
+message DeleteBookmarkResponse {}
+
+// ExportBookmarksRequest carries the bookmarks to send out of the system.
+message ExportBookmarksRequest {
+  // payload is the export in a form the outside world reads.
+  google.protobuf.Any payload = 1;
+}
+
+// ExportBookmarksResponse reports the export.
+message ExportBookmarksResponse {
+  // location is where the export was written.
+  string location = 1;
+}
+
+// BookmarkCreated is published when a bookmark is created.
+message BookmarkCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "created"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// BookmarkMoved is published when a bookmark moves to another folder.
+message BookmarkMoved {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "moved"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// BookmarksExported is published when bookmarks leave the system.
+message BookmarksExported {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmarks"
+    verb: "exported"
+    read_permission: "marks:export"
+  };
+  // location is where the export was written.
+  string location = 1;
+}
+
+// Marks serves bookmarks.
+service Marks {
+  // GetBookmark reads 1 bookmark.
+  rpc GetBookmark(GetBookmarkRequest) returns (GetBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      agent_description: "Read 1 bookmark by its id."
+      examples: "{\"id\": \"b-1\"}"
+    };
+  }
+  // ListBookmarks lists the bookmarks of 1 folder.
+  rpc ListBookmarks(ListBookmarksRequest) returns (ListBookmarksResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "List the bookmarks of a folder."
+      examples: "{\"folder\": {\"name\": \"reading\"}}"
+    };
+  }
+  // CreateBookmark writes a bookmark into a folder.
+  rpc CreateBookmark(CreateBookmarkRequest) returns (CreateBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_AGENT
+      expose: EXPOSE_UI
+      agent_description: "Save a bookmark in a folder."
+      examples: "{\"folder\": {\"name\": \"reading\"}, \"bookmark\": {\"url\": \"https://example.com/\"}}"
+    };
+  }
+  // DeleteBookmark deletes 1 bookmark.
+  rpc DeleteBookmark(DeleteBookmarkRequest) returns (DeleteBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+    };
+  }
+  // ExportBookmarks sends bookmarks out of the system.
+  rpc ExportBookmarks(ExportBookmarksRequest) returns (ExportBookmarksResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:export"
+      effect: EFFECT_OUTWARD
+      expose: EXPOSE_UI
+    };
+  }
+}

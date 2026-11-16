@@ -1,0 +1,2 @@
+exit 2
+does not match schema/manifest-v1.json

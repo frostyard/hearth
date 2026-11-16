@@ -1,0 +1,10 @@
+/build/
+/site/dist/
+/dist/
+*.test
+/coverage.out
+/coverage.html
+/.worktrees/
+/.env
+/.envrc
+/.mcp.json

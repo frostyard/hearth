@@ -1,0 +1,50 @@
+// The read-permission-not-on-topic case: a read permission that a selector
+// scopes, on an event that carries no selector.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// FolderRef names the folder that a request is scoped to.
+message FolderRef {
+  // name is the folder's name.
+  string name = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// ListThingsRequest names the folder to list.
+message ListThingsRequest {
+  // folder is the folder to list.
+  FolderRef folder = 1;
+}
+
+// ListThingsResponse carries the things of the folder.
+message ListThingsResponse {
+  // things are the things of the folder.
+  repeated string things = 1;
+}
+
+// ThingCreated is published when a thing is created, and carries no selector.
+message ThingCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "thing"
+    verb: "created"
+    read_permission: "fail:read"
+  };
+  // id identifies the thing.
+  string id = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // ListThings lists the things of 1 folder.
+  rpc ListThings(ListThingsRequest) returns (ListThingsResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}

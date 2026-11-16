@@ -1,0 +1,22 @@
+# The buf workspace of this repository (frostyard/core ADR-0023,
+# frostyard/core ADR-0085). Two modules: hearth's own Protobuf files under
+# proto/, and the end-to-end test app under testdata/e2e/proto. Both lint at
+# STANDARD, and hearth's module guards its wire format with FILE breaking.
+# No dependency is declared yet: google/protobuf/descriptor.proto is built into
+# buf, so buf.lock pins no module. buf.lock stays in the tree beside this file,
+# and `buf dep update` keeps it: a dependency that this file declares appears
+# in buf.lock with a digest, and the buf test fails when this file exists and
+# buf.lock does not. No remote module is fetched.
+version: v2
+modules:
+  - path: proto
+    lint:
+      use:
+        - STANDARD
+    breaking:
+      use:
+        - FILE
+  - path: testdata/e2e/proto
+    lint:
+      use:
+        - STANDARD

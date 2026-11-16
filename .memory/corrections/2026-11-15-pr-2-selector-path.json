@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "internal/model",
+  "correction": "A selector inside a map value or a repeated message has no single value for the permission check, so generation refuses it instead of skipping it or recording it as singular.",
+  "evidence": "frostyard/hearth#2, cross-review (openai/gpt-6.1-sol) of head 65114ab, finding 1",
+  "promoted_to": "cmd/protoc-gen-hearth-manifest/testdata/fail/selector-in-map-value"
+}

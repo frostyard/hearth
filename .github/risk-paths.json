@@ -5,42 +5,122 @@
     {
       "glob": ".github/risk-paths.json",
       "level": "L2",
-      "why": "governance: the high-risk path list"
+      "why": "workflow-and-permissions: governance, the high-risk path list"
     },
     {
       "glob": ".github/workflows/**",
       "level": "L2",
-      "why": "governance: CI, the risk-paths caller and token permissions"
+      "why": "workflow-and-permissions: governance, the CI workflows and their token permissions"
+    },
+    {
+      "glob": "policies/**",
+      "level": "L2",
+      "why": "workflow-and-permissions: rulesets and settings, the agent governance policy and its protected boundaries"
     },
     {
       "glob": "Makefile",
       "level": "L2",
-      "why": "governance: the verify gate"
+      "why": "workflow-and-permissions: governance, the make ci gate that every push runs"
     },
     {
-      "glob": "scripts/check-template.mjs",
+      "glob": "internal/workflowcheck/**",
       "level": "L2",
-      "why": "governance: the template verification gate"
+      "why": "workflow-and-permissions: governance, the tests of the workflows, the risk list and the corrections inbox"
     },
     {
-      "glob": "scripts/check-corrections.mjs",
+      "glob": "internal/repocheck/**",
       "level": "L2",
-      "why": "governance: the corrections validation gate"
+      "why": "workflow-and-permissions: governance, the tests of the import boundary and the docs rules"
     },
     {
-      "glob": "scripts/lib/**",
+      "glob": "internal/cmd/corrections-base/**",
       "level": "L2",
-      "why": "governance: the vendored risk-path validator and matcher"
+      "why": "workflow-and-permissions: governance, the check that a correction record is permanent"
+    },
+    {
+      "glob": "{cmd/protoc-gen-hearth-manifest,manifest,schema}/**",
+      "level": "L2",
+      "why": "permission-generation-and-checks: auth, the manifest whose capabilities lodge's consent page shows, and the diff that decides a new consent"
+    },
+    {
+      "glob": ".github/workflows/release.yml",
+      "level": "L1",
+      "why": "release-and-publication: publication, the tag that builds and publishes a release"
+    },
+    {
+      "glob": ".svu.yml",
+      "level": "L1",
+      "why": "release-and-publication: publication, the version the next tag carries"
+    },
+    {
+      "glob": ".goreleaser.yaml",
+      "level": "L1",
+      "why": "release-and-publication: publication, the binaries and checksums a release publishes"
+    },
+    {
+      "glob": "packaging/**",
+      "level": "L1",
+      "why": "release-and-publication: publication, the installed files of a package"
+    },
+    {
+      "glob": "proto/frostyard/hearth/v1/options.proto",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the options every app's permission checks are generated from"
+    },
+    {
+      "glob": "internal/model/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the generator of the per-RPC permission checks"
+    },
+    {
+      "glob": "cmd/protoc-gen-hearth-authz/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the plugin that emits the permission checks"
+    },
+    {
+      "glob": "authz/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the permission runtime that a later task builds"
+    },
+    {
+      "glob": "lodge/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the Lodge-Principal and Lodge-Grant trust check of the lodge adapter"
     },
     {
       "glob": "mise.toml",
       "level": "L1",
-      "why": "supply chain: the tool pins that CI installs"
+      "why": "supply-chain: supply chain, the tool pins that CI installs"
     },
     {
       "glob": "mise.lock",
       "level": "L1",
-      "why": "supply chain: the checksums of the tools that CI installs"
+      "why": "supply-chain: supply chain, the checksums of the tools that CI installs"
+    },
+    {
+      "glob": "go.mod",
+      "level": "L1",
+      "why": "supply-chain: supply chain, the Go toolchain line and the module hearth builds on"
+    },
+    {
+      "glob": "go.sum",
+      "level": "L1",
+      "why": "supply-chain: supply chain, the checksums of the Go modules"
+    },
+    {
+      "glob": "buf.yaml",
+      "level": "L1",
+      "why": "supply-chain: supply chain, the buf workspace and its lint rules"
+    },
+    {
+      "glob": "buf.lock",
+      "level": "L1",
+      "why": "supply-chain: supply chain, the digests of the buf module dependencies"
+    },
+    {
+      "glob": "buf.gen.yaml",
+      "level": "L1",
+      "why": "supply-chain: supply chain, the generator that the committed code comes from"
     }
   ]
 }

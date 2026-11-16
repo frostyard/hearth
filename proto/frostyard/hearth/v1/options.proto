@@ -1,0 +1,87 @@
+// Package frostyard.hearth.v1 holds hearth's Protobuf options: the annotations
+// an app writes on its own API so that hearth's plugins can generate its
+// manifest, MCP tools, permission checks and events.
+//
+// The extension numbers 51370 to 51379 are hearth's in-house range until the
+// Protobuf global extension registry grants a number. Do not use a number of
+// that range for anything else.
+syntax = "proto3";
+
+package frostyard.hearth.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/frostyard/hearth/gen/go/frostyard/hearth/v1;hearthv1";
+
+// Effect is what a call does to the system that holds the data.
+enum Effect {
+  // EFFECT_UNSPECIFIED is not a valid effect: generation fails on it.
+  EFFECT_UNSPECIFIED = 0;
+  // EFFECT_READ reads data and changes nothing.
+  EFFECT_READ = 1;
+  // EFFECT_WRITE changes data reversibly.
+  EFFECT_WRITE = 2;
+  // EFFECT_OUTWARD is irreversible, or leaves the system.
+  EFFECT_OUTWARD = 3;
+}
+
+// Expose is where an RPC is reachable.
+enum Expose {
+  // EXPOSE_UNSPECIFIED is not a valid exposure: generation fails on it.
+  EXPOSE_UNSPECIFIED = 0;
+  // EXPOSE_UI makes the RPC reachable from the app's own user interface.
+  EXPOSE_UI = 1;
+  // EXPOSE_AGENT makes the RPC an MCP tool that an agent can call.
+  EXPOSE_AGENT = 2;
+}
+
+// Rpc is the hearth annotation of every method of an app's service.
+message Rpc {
+  // permission is the capability the call needs, as "<app>:<capability>",
+  // for example "marks:read". It is required.
+  string permission = 1;
+  // effect is what the call does. It is required, and never unspecified.
+  Effect effect = 2;
+  // expose lists where the RPC is reachable. It is required and not empty.
+  repeated Expose expose = 3;
+  // agent_description tells an agent when to call the RPC as an MCP tool.
+  string agent_description = 4;
+  // examples holds request examples, each a JSON object in the proto3 JSON
+  // form of the request message.
+  repeated string examples = 5;
+}
+
+// Event is the hearth annotation of a message that an RPC of the service
+// publishes.
+message Event {
+  // object is the kind of object the event is about, for example "bookmark".
+  string object = 1;
+  // verb is what happened to the object, for example "created".
+  string verb = 2;
+  // selector names the selector whose value the event carries, when the
+  // event's read permission is scoped by a selector.
+  string selector = 3;
+  // read_permission is the capability that a consumer needs to read the
+  // event's content, as "<app>:<capability>".
+  string read_permission = 4;
+}
+
+// hearth_rpc annotates a method: its permission, effect, exposure and the
+// examples an agent sees.
+extend google.protobuf.MethodOptions {
+  // hearth_rpc is the annotation of 1 method of an app's service.
+  Rpc hearth_rpc = 51370;
+}
+
+// hearth_selector annotates a request field that carries a selector value,
+// such as the folder a bookmark is filed in.
+extend google.protobuf.FieldOptions {
+  // hearth_selector is the selector's name, for example "folder".
+  string hearth_selector = 51371;
+}
+
+// hearth_event annotates a message that an RPC publishes as an event.
+extend google.protobuf.MessageOptions {
+  // hearth_event is the event's object, verb, selector and read permission.
+  Event hearth_event = 51372;
+}

@@ -1,0 +1,31 @@
+// The no-effect case: an RPC with no effect.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// GetThingRequest names the thing to read.
+message GetThingRequest {
+  // id identifies the thing.
+  string id = 1;
+}
+
+// GetThingResponse carries the thing.
+message GetThingResponse {
+  // thing is what was read.
+  string thing = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // GetThing reads 1 thing and declares no effect.
+  rpc GetThing(GetThingRequest) returns (GetThingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      expose: EXPOSE_UI
+    };
+  }
+}

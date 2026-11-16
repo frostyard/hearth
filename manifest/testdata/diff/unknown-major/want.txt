@@ -1,0 +1,2 @@
+exit 2
+the manifest is major 2, and this hearth reads major 1

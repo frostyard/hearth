@@ -1,0 +1,82 @@
+{
+  "hearth": 1,
+  "app": "demo",
+  "version": "0.1.0",
+  "capabilities": [
+    "demo:publish",
+    "demo:read",
+    "demo:write"
+  ],
+  "selectors": [
+    "group"
+  ],
+  "operations": [
+    {
+      "name": "frostyard.demo.v1.NoteService.CreateNote",
+      "permission": "demo:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "note.group",
+          "selector": "group"
+        }
+      ],
+      "tool": "create_note"
+    },
+    {
+      "name": "frostyard.demo.v1.NoteService.GetNote",
+      "permission": "demo:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [],
+      "tool": "get_note"
+    },
+    {
+      "name": "frostyard.demo.v1.NoteService.ListNotes",
+      "permission": "demo:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "group",
+          "selector": "group"
+        }
+      ],
+      "tool": "list_notes"
+    },
+    {
+      "name": "frostyard.demo.v1.NoteService.PublishNote",
+      "permission": "demo:publish",
+      "effect": "outward",
+      "expose": [
+        "ui"
+      ],
+      "selectors": []
+    }
+  ],
+  "events": [
+    {
+      "type": "org.frostyard.demo.note.created",
+      "message": "frostyard.demo.v1.NoteCreated",
+      "topic": "demo.note.created.group",
+      "selector": "group",
+      "read_permission": "demo:read"
+    },
+    {
+      "type": "org.frostyard.demo.note.published",
+      "message": "frostyard.demo.v1.NotePublished",
+      "topic": "demo.note.published",
+      "read_permission": "demo:publish"
+    }
+  ]
+}

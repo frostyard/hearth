@@ -1,0 +1,45 @@
+// The duplicate-tool case: 2 RPCs with the same name in 2 services, so 1 tool
+// name twice.
+syntax = "proto3";
+
+package frostyard.fail.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/fail/v1;failv1";
+
+// GetThingRequest names the thing to read.
+message GetThingRequest {
+  // id identifies the thing.
+  string id = 1;
+}
+
+// GetThingResponse carries the thing.
+message GetThingResponse {
+  // thing is what was read.
+  string thing = 1;
+}
+
+// ThingService serves things.
+service ThingService {
+  // GetThing reads 1 thing.
+  rpc GetThing(GetThingRequest) returns (GetThingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_AGENT
+    };
+  }
+}
+
+// OtherThingService serves things as well.
+service OtherThingService {
+  // GetThing reads 1 other thing, and so asks for the same tool name.
+  rpc GetThing(GetThingRequest) returns (GetThingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "fail:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_AGENT
+    };
+  }
+}

@@ -16,26 +16,26 @@ Docs are split by the question they answer:
 - [0001 — Record architecture decisions](adr/0001-record-architecture-decisions.md)
 - [0002 — Agent-portable instruction surface](adr/0002-agent-portable-instruction-surface.md)
 - [0003 — Verify gate, risk paths and corrections](adr/0003-verify-gate-risk-paths-and-corrections.md)
+- [0004 — Generate an app's manifest from hearth's Protobuf options](adr/0004-generate-the-manifest-from-protobuf-options.md)
+- [0005 — Run the repository gate in Go](adr/0005-run-the-repository-gate-in-go.md)
 
 ### Org-wide decisions
 
 - [Org-wide decisions (frostyard/core ADRs)](org-adrs.md)
 
-### Guides
-
-- [After you create a repository from this template](new-repository.md)
-
 ### Design
 
+- [hearth](design/overview.md)
 - [Agent-ready repository](design/agent-ready-repository.md)
 
 ### Specs
 
-*(none yet)*
+- [Options](specs/options.md)
+- [Manifest](specs/manifest.md)
 
 ### Plans
 
-*(none yet)*
+- [0001 — Roadmap](plans/0001-roadmap.md)
 
 ## Conventions
 

@@ -1,0 +1,13 @@
+# svu configuration (frostyard/core ADR-0012, ADR-0053).
+#
+# https://github.com/caarlos0/svu
+verbose: false
+# Only hearth's own vX.Y.Z tags count: the repository tags nothing else yet.
+tag.pattern: "v[0-9]*"
+tag.prefix: "v"
+tag.mode: all
+log.directory:
+  - "."
+metadata: ""
+always: true
+v0: true

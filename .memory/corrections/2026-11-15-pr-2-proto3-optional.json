@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "cmd/protoc-gen-hearth-manifest",
+  "correction": "A protoc plugin must declare FEATURE_PROTO3_OPTIONAL, or protoc and buf refuse it for a file with a proto3 optional field; in-memory tests do not see this, so the e2e proto has an optional field.",
+  "evidence": "frostyard/hearth#2, cross-review (openai/gpt-6.1-sol) of head 65114ab, finding 2",
+  "promoted_to": "TestProto3Optional, testdata/e2e/proto"
+}

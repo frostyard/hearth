@@ -1,125 +1,193 @@
-# Project Name
+# frostyard/hearth
 
-<!-- One paragraph: what this project is and who it serves. Point at
-docs/README.md as the entry point for everything else. Keep this file under
-~200 lines — it is loaded into every agent session; long files dilute the
-rules that matter. -->
+hearth is a toolkit for frostyard's first-party apps: Protobuf options, `protoc`
+plugins and a Go runtime, so that 1 Protobuf service gives an app its API, its
+MCP tools, its permission checks, its events and a versioned manifest
+(frostyard/core
+[ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)).
+lodge is the hub of those apps: it issues access, routes MCP and brokers
+events. Start at [docs/README.md](docs/README.md). The design is in
+[docs/design/overview.md](docs/design/overview.md), the options contract in
+[docs/specs/options.md](docs/specs/options.md), and the manifest format in
+[docs/specs/manifest.md](docs/specs/manifest.md).
 
-One or two sentences describing the project. Start at
-[docs/README.md](docs/README.md).
-
-This file (`AGENTS.md`) is the CANONICAL agent instructions — `CLAUDE.md`,
-`GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md` are symlinks
+This file (`AGENTS.md`) is the canonical agent instructions. `CLAUDE.md`,
+`GEMINI.md`, `.cursorrules` and `.github/copilot-instructions.md` are symlinks
 to it, and `.claude/skills` symlinks to `.agents/skills/`
-([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)). Edit only
-the canonical paths; keep content tool-agnostic.
+([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)). Edit only the
+canonical paths; keep content tool-agnostic.
 
-## Skills (follow these for common tasks)
+## Status
 
-Step-by-step procedures live in [.agents/skills/](.agents/skills/); follow
-them rather than improvising, whichever agent you are:
+Incubating and pre-release. The repository is a frostyard/core
+[Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)
+repository: its decision date is 2027-03-31. Phase 1 is built: the options,
+the model, the manifest plugin, the schema, the CLI, the Go gate and the docs
+site. The permission runtime, the lodge adapter, the MCP plugin, the events
+plugin and the runtime are later tasks of the
+[roadmap](docs/plans/0001-roadmap.md); do not build them early.
 
-<!-- One bullet per skill: **When to use it** → [.agents/skills/<name>/SKILL.md].
-Add a skill whenever you find yourself re-explaining a multi-step procedure.
-Start from .agents/skills/TEMPLATE/SKILL.md. -->
+## Map
 
-- *(none yet — add the first one when a procedure repeats)*
+- `proto/frostyard/hearth/v1/options.proto`: the 3 options, and nothing else.
+  The extension numbers 51370 to 51379 are hearth's in-house range until the
+  Protobuf global extension registry grants a number.
+- `gen/go/`: the options' generated Go code (`hearthv1`), committed. Never edit
+  it by hand.
+- `internal/model`: the app model that every plugin reads, with every rule of
+  [docs/specs/options.md](docs/specs/options.md).
+- `manifest/`: the format's Go types, its canonical JSON encoder, its reader
+  and its compatibility rules (`Diff`, `NextMajor`).
+- `schema/`: `manifest-v1.json`, embedded, and `Validate`.
+- `cmd/protoc-gen-hearth-manifest`: the plugin, with golden and failure cases
+  under `testdata/`.
+- `cmd/hearth`: the CLI, `hearth manifest diff` and `hearth manifest validate`.
+  The standard library `flag` package only; no cobra.
+- `testdata/e2e/`: a demo app, its buf template and its committed manifest.
+- `internal/workflowcheck`: the repository's own rules as Go tests: the
+  workflows, the risk-path list, the corrections inbox, the Dependabot entries
+  and the buf configuration.
+- `internal/repocheck`: the docs links and index, the private-host boundary, and
+  the import boundary.
+- `internal/cmd/corrections-base`: the check behind `make corrections-base`.
+- `site/`: the user documentation site (ProperDocs and MaterialX, core
+  ADR-0070).
 
-## Code conventions (live — the code exists)
+## Gates
 
-<!-- The most important section. Rules here must describe the code AS IT IS,
-not aspirations — an agent that follows a stale rule produces broken work.
-Graduate a rule into this list only when the code enforcing or exemplifying
-it has landed; until then it lives in a design doc as intent.
+- `make ci` is the command to run before a push: `verify gen-check race cross
+  corrections-base`. `make check` formats first, then verifies. `mise install`
+  provisions golangci-lint, buf, protoc-gen-go and svu; Go comes from `go.mod`.
+- `make verify` runs `go mod tidy -diff`, `go vet ./...`, a gofmt check, the
+  pinned golangci-lint, `buf lint`, `buf format --diff --exit-code` and
+  `go test ./...`.
+- `make generate` writes `gen/` and the demo app's `manifest.json`; `make
+  gen-check` regenerates both into a temporary directory, compares that
+  directory with the tree, and fails on a changed, a missing or an extra file,
+  then sweeps the directory away. Run `make generate` after a change of the
+  options, of the model or of the plugin, and commit the result with the
+  change.
+- Tests run unfiltered (`go test ./...`, frostyard/core ADR-0038). A test uses
+  a temp dir, and never sleeps, uses the network or the wall clock.
+- `make vulncheck` needs the network, so it is in no gate; CI runs it as its
+  own job.
+- Fix a lint finding rather than loosening `.golangci.yml`.
+- **A gate recipe fails closed.** Only an absent manifest path at an existing
+  base skips the comparison: check the base commit first
+  (`git rev-parse --verify`), then look the path up (`git ls-tree`: only a
+  lookup that succeeds and prints no entry means absent), and never treat a
+  `git ls-tree` or `git show` failure as an absent file. A shallow clone has
+  no base commit, and that stops the gate with exit 2.
 
-Write rules imperatively and concretely, each with enough mechanism to be
-followed without asking ("Storage only via db.Open(slug, migrations)" — not
-"use the database layer"). Point at one canonical example in the code for
-every structural rule. Rules that remove a degree of freedom are the
-valuable ones: every choice an agent doesn't have to make is a failure mode
-removed. -->
+## Invariants
 
-- *(add rules as the code that enforces them lands)*
-- Run `make verify` before you call any change done. CI job `verify` runs
-  `make ci`, which also checks the corrections records against the PR base: no
-  record removed or renamed, only an empty `promoted_to` filled, and the old
-  corrections file does not come back. Run `make ci BASE=origin/main` for the
-  same check locally.
-- A doc that says what a gate refuses names the command, the condition it
-  runs under (for example `make ci BASE=<ref>`, not `make ci`) and each change
-  the gate allows (for example a filled empty `promoted_to`), as the
-  `Makefile`, the workflow and the gate's code define them.
-- `mise.toml` and `mise.lock` pin every tool the gate runs (ADR-0043 in core);
-  run `mise install` to get those versions. Change a pin only with `mise lock`,
-  in a commit of its own.
+- **hearth imports no lodge, frostyard app or Pocket code**, in Go or in
+  Protobuf (core ADR-0085). `internal/repocheck` fails on it.
+- **The options are fixed.** The option file holds the 2 enums, the 2 messages
+  and the 3 extensions that [docs/specs/options.md](docs/specs/options.md)
+  names, and nothing else.
+- **A generated file is committed.** `gen/` and every golden manifest are in
+  the tree, and `make gen-check` fails on a difference without reading git: it
+  regenerates into a temporary directory and compares the 2 trees.
+- **No remote buf plugin runs.** Every plugin is a local binary that
+  `mise.lock` pins, or `go run` of this repository's own command.
+- **Tools are pinned in `mise.toml` and `mise.lock`**, with a checksum for each
+  platform. No workflow downloads a tool any other way.
+- **`buf.yaml` and `buf.lock` are 1 pair.** `buf.lock` is in the tree, and
+  `buf dep update` keeps it; a dependency that `buf.yaml` declares appears in it
+  with a digest. The buf test fails when `buf.yaml` exists and `buf.lock` does
+  not.
+- **The manifest is the contract.** A change of the format is a change of
+  `schema/manifest-v1.json`, of the spec and of the code in 1 pull request, and
+  a breaking change of the format changes its major version.
+- **No private hosts.** Docs write `example.com`, and never a tailnet, device or
+  home-network name or a real address.
+- The 8 `.memory/corrections/*.json` files of the template are permanent.
 
-**Test reliability.** No sleeps for timing (wait on a condition or inject a
-clock). No network and no wall clock in unit tests (inject them). A flaky test
-gets an issue, then a fix or a quarantine (skip with the issue link) in the
-same PR. Never retry a job or a test until it is green.
+## Releases
 
-**Blocker to guard.** When a review (agent cross-review, owner review, or a
-human) finds a blocking point, the PR that fixes it also adds a guard: a
-targeted test that fails without the fix (preferred), or an `AGENTS.md` rule
-when no test can catch it. The same PR adds 1 record file under
-`.memory/corrections/` (name `<date>-pr-<N>-<words>.json`; `evidence`: the PR
-and the review; `promoted_to`: the test or the rule). See `.memory/README.md`.
+- **Who tags: Brian.** Agents never tag, push tags or release. A due release
+  goes to Brian as an ask.
+- `make bump` is the only way to push a `vX.Y.Z` tag. It runs on `main` when the
+  tree is clean and equal to `origin/main`, runs `make check`, takes the version
+  from `svu next`, and pushes an annotated tag. svu reads only `vX.Y.Z` tags
+  (`.svu.yml`), so the first release is `v0.1.0`.
+- The series is `vX.Y.Z`, from semver on the changes since the last tag. There
+  is no library series: `manifest/` and `schema/` are Go packages of this
+  module, used through the module.
+- The tags are the record of each release, so this file names no latest
+  version. The newest 1 is the first line of
+  `git ls-remote --tags --refs --sort=-v:refname origin 'refs/tags/v[0-9]*'`,
+  or GitHub > frostyard/hearth > Tags.
 
-**Risk paths.** `.github/risk-paths.json` is a level list (schema version 2):
-every glob carries a level, and a PR that touches one gets that level label from
-`.github/workflows/risk-paths.yml` (`level:L1` read every line, `level:L2` read
-the diff, `level:L3` skim, `level:L4` title and CI), plus `risk:high` at L1 and
-L2, which declares tier 3. Core computes the level from the matched globs, the
-`default_level` and the org floors, and it never lowers a level label that the
-PR already has. The same caller removes `ready-for-human` when the head moves
-after the label. Add a path when you add a file of that kind (signing, auth,
-publish, secrets, destructive operations, CI), with a `why` that names its
-category. The gate requires schema version 2.
+## Repository baseline
 
-**Vendored files.** `scripts/lib/risk-paths.mjs` and
-`scripts/check-corrections.mjs` are copies from frostyard/core; never edit them
-by hand (`make verify` checks their hashes).
+The repository follows core's baseline (frostyard/core ADR-0071, its spec
+`docs/specs/repository-baseline.md`, rows B1 to B19;
+[docs/org-adrs.md](docs/org-adrs.md)). `internal/workflowcheck` and
+`internal/repocheck` fail `make verify` when one of these breaks:
 
-## Repository boundary
-
-<!-- What does NOT belong in this repo (secrets, personal data, generated
-files that are actually build outputs, apps that belong elsewhere)? How are
-releases cut? Delete the section if genuinely not applicable. -->
+- The instruction symlinks above (B1). Edit `AGENTS.md`, never a link.
+- `.memory/corrections/` (B2, core ADR-0081): 1 file for each correction record,
+  named `<date>-<slug>.json` (from a pull request:
+  `<date>-pr-<N>-<words>.json`), with exactly `date`, `scope`, `correction`,
+  `evidence` and `promoted_to`, in canonical form: the text of
+  `JSON.stringify(record, null, 2)` and 1 final newline, escapes and lone
+  surrogates included. A record is permanent: never
+  remove or rename a file, and change only an empty `promoted_to`. A fix of a
+  blocking review point adds its guard and 1 record file.
+- `.github/risk-paths.json` (B6, core ADR-0068, ADR-0078): schema version 2,
+  each glob at `L1` to `L4`, the default `L3`, and each entry at L1 or L2 names
+  a protected boundary of `policies/agent-governance.json` before its colon.
+  The manifest plugin, `manifest/` and `schema/` are at L2: the manifest's
+  capabilities are what lodge's consent page shows, and the diff decides a new
+  consent.
+  A glob that matches no file yet is allowed, because a later task adds those
+  paths. A release workflow, install script, unit, credential store, auth check
+  or socket admission joins the list in the pull request that adds it.
+- `.github/dependabot.yml` (B13): 1 entry for each manifest (`go.mod`), each
+  with exactly 1 `patterns: ["*"]` group.
+- Every `uses:` is a 40-character commit SHA with a version comment, every
+  workflow has `permissions: {}` at the top, and every checkout sets
+  `persist-credentials: false` (B5).
+- `README.md` follows core's README spec for the kind `tool` (B17).
+- No `CODEOWNERS` file (B15), and no other agent framework's tree (B16).
 
 ## Documentation rules (enforced)
 
-Docs live in `docs/` in four categories. **Every new doc starts from its
-category's `TEMPLATE.md`** and follows its structure:
+Docs live in `docs/` in 4 categories (frostyard/core ADR-0025). Every new doc
+starts from its category's `TEMPLATE.md` and follows its structure:
 
-- `docs/adr/` — why we decided. Immutable once Accepted; reversals are new
-  ADRs that mark the old one Superseded. This includes ADRs 0001 to 0003 that
-  come with the template: their `YYYY-MM-DD` date is a placeholder, not a
-  draft status. A new org-wide rule goes in a core ADR listed in
-  `docs/org-adrs.md`; a new project rule goes in a new ADR.
-- `docs/design/` — how it fits together. Living; updated in place to match
+- `docs/adr/`: why we decided. Immutable once Accepted; a reversal is a new ADR
+  that marks the old one Superseded. While the repository is pre-release, a
+  Proposed ADR may still be edited in place.
+- `docs/design/`: how it fits together. Living; updated in place to match
   reality.
-- `docs/specs/` — exact contracts. Change only alongside implementing code.
-- `docs/plans/` — order of work. Phases with "Done when" outcomes.
+- `docs/specs/`: exact contracts. Change only alongside the implementing code.
+- `docs/plans/`: order of work. Phases with "Done when" outcomes.
 
 ### Cross-linking is mandatory
 
-A doc without its required links is incomplete — do not finish a docs change
+A doc without its required links is incomplete; do not finish a docs change
 until they exist, in both directions:
 
-- **ADR** → links every design doc/spec it shapes, and prior ADRs it builds on.
-- **Design doc** → links the ADR(s) providing its rationale, the spec(s)
-  pinning its contracts, and the roadmap phase that builds it.
-- **Spec** → links its motivating ADR(s) and the design doc showing where it
-  fits.
-- **Plan** → every phase links the design docs/specs it implements; resolved
-  open questions become ADRs.
+- **ADR** links every design doc and spec it shapes, and the prior ADRs it
+  builds on.
+- **Design doc** links the ADR(s) providing its rationale, the spec(s) pinning
+  its contracts, and the roadmap phase that builds it.
+- **Spec** links its motivating ADR(s) and the design doc showing where it fits.
+- **Plan** links every design doc and spec that a phase implements.
 
-When you touch a doc, verify its links still hold (targets exist, section
-anchors valid) and add the back-links on the targets. Use relative paths.
+Use relative paths; `make check` fails on a relative link whose file or heading
+is missing.
 
 ### Housekeeping
 
-- New doc ⇒ add a line to the index in [docs/README.md](docs/README.md).
-- New significant decision ⇒ new ADR *first*, then update the affected design
-  docs/specs in the same change.
+- New doc: add a line to the index in [docs/README.md](docs/README.md).
+- New significant decision: new ADR first, then the affected design docs and
+  specs in the same change.
 - Convert relative dates ("next weekend") to absolute dates in all docs.
+- A change to user-visible behavior updates the affected page in `site/content/`
+  in the same pull request.
+- A new command, option or manifest member updates the affected `site/` page in
+  the same pull request.

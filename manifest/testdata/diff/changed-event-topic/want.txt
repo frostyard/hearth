@@ -1,0 +1,4 @@
+exit 1
+event org.frostyard.marks.bookmark.created: topic changed from "marks.bookmark.created.folder" to "marks.bookmark.created.group"
+event org.frostyard.marks.bookmark.created: selector changed from "folder" to "group"
+the breaking changes need the next major version: 1.2.0 -> 1.2.0

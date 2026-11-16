@@ -1,0 +1,14 @@
+# Generate the demo app's manifest (make generate). The plugin runs from this
+# checkout with `go run`, so no remote or installed plugin is needed. The
+# output tree testdata/e2e/gen/ holds the committed manifest.json that
+# make gen-check compares with a fresh run.
+version: v2
+plugins:
+  - local:
+      - go
+      - run
+      - ./cmd/protoc-gen-hearth-manifest
+    out: testdata/e2e/gen
+    opt:
+      - app=demo
+      - version=0.1.0
