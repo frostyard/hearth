@@ -78,8 +78,10 @@ func ForMessage(md protoreflect.MessageDescriptor) ([]byte, error) {
 
 // HasObjectForm reports whether 1 message's proto3 JSON form is 1 JSON object,
 // which is what a tool's arguments and result must be. A message that is not a
-// well-known type is an object; of the well-known types, Struct, Empty and Any
-// are objects, and every other 1 is not.
+// well-known type is an object, whatever its name: an ordinary message named
+// "Timestamp" in a proto file with no package is no well-known type. Of the
+// well-known types, Struct, Empty and Any are objects, and every other 1 is
+// not.
 func HasObjectForm(md protoreflect.MessageDescriptor) bool {
 	if md == nil {
 		return false
@@ -326,14 +328,22 @@ func (b *builder) definition(md protoreflect.MessageDescriptor) (any, error) {
 	return map[string]any{"$ref": "#/$defs/" + string(name)}, nil
 }
 
-// isWellKnown reports whether 1 message name is a well-known type.
+// isWellKnown reports whether 1 full name is in the package of the well-known
+// types.
 func isWellKnown(name protoreflect.FullName) bool {
 	return strings.HasPrefix(string(name), wellKnownPrefix)
 }
 
 // wellKnown returns the schema of 1 well-known type, and whether the message is
 // 1.
+//
+// Only a full name that starts with the package of the well-known types is 1: an
+// ordinary message named "Empty", in a proto file with no package, is no
+// google.protobuf.Empty, and it keeps its own fields.
 func wellKnown(name protoreflect.FullName) (map[string]any, bool) {
+	if !isWellKnown(name) {
+		return nil, false
+	}
 	switch strings.TrimPrefix(string(name), wellKnownPrefix) {
 	case "Timestamp":
 		return map[string]any{"type": "string", "format": "date-time"}, true

@@ -103,8 +103,15 @@ message Everything {
 // descriptors compiles source and returns its messages, by name.
 func descriptors(t *testing.T) map[string]protoreflect.MessageDescriptor {
 	t.Helper()
+	return messagesOf(t, source)
+}
+
+// messagesOf compiles 1 proto source and returns its messages, by their simple
+// name.
+func messagesOf(t *testing.T, src string) map[string]protoreflect.MessageDescriptor {
+	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "schema.proto"), []byte(source), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "schema.proto"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	compiler := protocompile.Compiler{
@@ -666,4 +673,108 @@ func TestEmptyRoot(t *testing.T) {
 	if err := compileMessage(t, md).Validate(instance); err != nil {
 		t.Errorf("the empty object does not validate: %v", err)
 	}
+}
+
+// unqualifiedSource declares ordinary messages whose simple names are the names
+// of well-known types, in no package.
+const unqualifiedSource = `syntax = "proto3";
+option go_package = "example.com/plainv1;plainv1";
+
+// Empty is an ordinary message, and it is no google.protobuf.Empty.
+message Empty {
+  string text = 1;
+}
+
+// Struct is an ordinary message, and it is no google.protobuf.Struct.
+message Struct {
+  int32 n = 1;
+}
+
+// Timestamp is an ordinary message, and it is no google.protobuf.Timestamp.
+message Timestamp {
+  int64 seconds = 1;
+}
+
+// Holder uses the 3 as fields.
+message Holder {
+  Empty empty = 1;
+  Struct struct = 2;
+  Timestamp timestamp = 3;
+}
+`
+
+// TestUnqualifiedNamesAreOrdinary checks that a well-known mapping needs the
+// full name: a message named Empty, Struct or Timestamp in a proto file with no
+// package is an ordinary message, as a root and as a field.
+func TestUnqualifiedNamesAreOrdinary(t *testing.T) {
+	messages := messagesOf(t, unqualifiedSource)
+	for _, tc := range []struct {
+		name     string
+		property string
+		want     map[string]any
+	}{
+		{"Empty", "text", map[string]any{"type": "string"}},
+		{"Struct", "n", map[string]any{"type": "integer"}},
+		{"Timestamp", "seconds", map[string]any{"type": "string", "pattern": `^-?[0-9]+$`}},
+	} {
+		md := messages[tc.name]
+		if md == nil {
+			t.Fatalf("the test app holds no message %q", tc.name)
+		}
+		if !protoschema.HasObjectForm(md) {
+			t.Errorf("HasObjectForm(%s) = false, and it is an ordinary message", md.FullName())
+		}
+		root := schemaOfMessage(t, md)
+		if root["additionalProperties"] != false {
+			t.Errorf("%s: additionalProperties = %v, want false: %v", md.FullName(), root["additionalProperties"], root)
+		}
+		properties, ok := root["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: the schema has no properties: %v", md.FullName(), root)
+		}
+		property, ok := properties[tc.property].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: the schema has no property %q: %v", md.FullName(), tc.property, properties)
+		}
+		if !equalJSON(property, tc.want) {
+			t.Errorf("%s.%s = %v, want %v", md.FullName(), tc.property, property, tc.want)
+		}
+	}
+
+	// The same 3 as fields of another message.
+	holder := schemaOfMessage(t, messages["Holder"])
+	properties, ok := holder["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("Holder: the schema has no properties: %v", holder)
+	}
+	for field, property := range map[string]string{"empty": "text", "struct": "n", "timestamp": "seconds"} {
+		value, ok := properties[field].(map[string]any)
+		if !ok {
+			t.Fatalf("Holder.%s is no schema: %v", field, properties[field])
+		}
+		if value["additionalProperties"] != false {
+			t.Errorf("Holder.%s has no additionalProperties: false: %v", field, value)
+		}
+		inner, ok := value["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("Holder.%s has no properties: %v", field, value)
+		}
+		if _, ok := inner[property]; !ok {
+			t.Errorf("Holder.%s declares no property %q: %v", field, property, inner)
+		}
+	}
+}
+
+// schemaOfMessage returns 1 message's schema as a decoded object.
+func schemaOfMessage(t *testing.T, md protoreflect.MessageDescriptor) map[string]any {
+	t.Helper()
+	data, err := protoschema.ForMessage(md)
+	if err != nil {
+		t.Fatalf("ForMessage(%s): %v", md.FullName(), err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("%s: the schema is not JSON: %v", md.FullName(), err)
+	}
+	return schema
 }
