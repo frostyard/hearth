@@ -77,6 +77,7 @@ gen-check: ## Regenerate into a temp dir, and fail when the tree differs from a 
 	ok=1; \
 	diff -r "$$tmp/gen" gen || ok=0; \
 	diff -r "$$tmp/testdata/e2e/gen" testdata/e2e/gen || ok=0; \
+	diff -r "$$tmp/internal/e2e/gen" internal/e2e/gen || ok=0; \
 	if [ "$$ok" = 0 ]; then \
 		echo "the generated code or the committed manifest differs from a fresh run; run make generate and commit the result"; \
 		exit 1; \

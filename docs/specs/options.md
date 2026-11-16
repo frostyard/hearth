@@ -76,6 +76,23 @@ service Marks {
 Any other parameter is an error. The parameters arrive as
 `app=<id>,version=<major.minor.patch>`.
 
+### A Go plugin's parameters
+
+A Go plugin (`protoc-gen-hearth-authz` and `protoc-gen-hearth-mcp`) writes Go
+code, so `buf` and `protoc` send the standard parameters of `protoc-gen-go`
+beside hearth's own. The Go plugins read and ignore them:
+
+| Parameter | Meaning |
+| --- | --- |
+| `paths=import\|source_relative` | the output tree of the Go code |
+| `module=<path>` | the module prefix of the import path, which `paths=source_relative` does not take |
+| `annotate_code[=true\|false]` | whether to write the generated code's annotations |
+| `M<file>=<package>` | the Go package of 1 proto file |
+
+`model.ParseGoParams` reads them, and `model.BuildGo` builds the model for them.
+The manifest plugin is no Go plugin: it keeps the strict parameters of
+[Plugin parameters](#plugin-parameters), and `model.ParseParams` reads them.
+
 ### proto3 optional
 
 The plugin declares `FEATURE_PROTO3_OPTIONAL` in its
@@ -136,6 +153,20 @@ written when a rule fails.
     `read permission <p> is scoped by selector(s) <S>, which the topic <topic> does not carry`.
     When S is empty, the event may carry any selector, or none.
 
+### An RPC on an object id
+
+12. An RPC is **on an object id** when its request message carries at least 1
+    object-id field: a singular field named `id` or ending in `_id` whose kind
+    is not `message` or `group` — a `string`, `bytes`, every integer kind, or an
+    enum — followed through singular message fields, as a dotted path of proto
+    field names, such as `note.id`. A field named `_id` that holds a message is
+    no object id itself, and the walk reads the ids inside it. The walk follows
+    the same cycle guard as rule 7, and a map and a repeated field are not
+    followed: a list has no 1 object id.
+    The plugin that generates the permission checks writes 1 hook for each such
+    RPC ([specs/permissions.md](permissions.md)). Object ids are not in the
+    manifest: they change no consent, and lodge reads no hook.
+
 ### The model
 
 - `capabilities` is the sorted set of every RPC permission and every event read
@@ -150,6 +181,9 @@ written when a rule fails.
 | `gen/go/frostyard/hearth/v1/options.pb.go` | `buf generate` with the pinned `protoc-gen-go` |
 | `cmd/protoc-gen-hearth-manifest/testdata/golden/<case>/manifest.json` | the plugin's output on that case, committed by `make generate` |
 | `testdata/e2e/gen/manifest.json` | `buf generate --template testdata/e2e/buf.gen.yaml`, committed |
+| `internal/e2e/gen/frostyard/demo/v1/demo.pb.go` | `buf generate --template testdata/e2e/buf.gen.yaml` with the pinned `protoc-gen-go`, committed |
+| `internal/e2e/gen/frostyard/demo/v1/demo_hearth_authz.go` | the same run with `protoc-gen-hearth-authz`, committed |
+| `internal/e2e/gen/frostyard/demo/v1/demo_hearth_mcp.go` | the same run with `protoc-gen-hearth-mcp`, committed |
 | every app's `manifest.json` | its own `make generate`, with its `app` and `version` |
 
 ## References
@@ -157,4 +191,6 @@ written when a rule fails.
 - Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md)
 - Context: [design/overview.md](../design/overview.md)
 - The format it feeds: [specs/manifest.md](manifest.md)
+- The checks it generates: [specs/permissions.md](permissions.md)
+- The tools it generates: [specs/mcp-tools.md](mcp-tools.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)

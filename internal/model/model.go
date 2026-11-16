@@ -74,6 +74,11 @@ type Operation struct {
 	Expose []string
 	// Selectors are the request fields that carry a selector value.
 	Selectors []Selector
+	// ObjectIDs are the request fields that carry an object id, as dotted
+	// paths of proto field names, or none. An RPC with at least 1 is an RPC on
+	// an object id: its permission check needs a hook that reads the stored
+	// object's selector value. Object ids are not in the manifest.
+	ObjectIDs []string
 	// Tool is the RPC's MCP tool name, or "" when agents do not reach it.
 	Tool string
 	// AgentDescription tells an agent when to call the RPC.
@@ -106,9 +111,23 @@ type Event struct {
 
 // Build builds the app's model from the files of gen that are marked for
 // generation, and checks every rule. It reports every problem it finds, 1 line
-// each, sorted, and each line prefixed with the full name of its element.
+// each, sorted, and each line prefixed with the full name of its element. It
+// reads the parameters of a hearth plugin (see ParseParams).
 func Build(gen *protogen.Plugin) (*App, error) {
-	params, err := ParseParams(gen.Request.GetParameter())
+	return build(gen, ParseParams)
+}
+
+// BuildGo builds the app's model for a Go plugin: it is Build, and it ignores
+// the standard parameters that a protoc-gen-go run sends beside hearth's own
+// (see ParseGoParams), so that 1 buf template runs the manifest plugin and the
+// Go plugins together.
+func BuildGo(gen *protogen.Plugin) (*App, error) {
+	return build(gen, ParseGoParams)
+}
+
+// build builds the app's model, with parse reading the plugin's parameters.
+func build(gen *protogen.Plugin, parse func(string) (Params, error)) (*App, error) {
+	params, err := parse(gen.Request.GetParameter())
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +274,7 @@ func (b *builder) addMethod(method *protogen.Method) {
 	}
 
 	op.Selectors = b.selectors(name, method.Desc.Input(), "", false, map[selectorVisit]bool{})
+	op.ObjectIDs = objectIDs(method.Desc.Input(), "", map[selectorVisit]bool{})
 	b.app.Operations = append(b.app.Operations, op)
 }
 
@@ -366,6 +386,40 @@ func (b *builder) selectors(name string, message protoreflect.MessageDescriptor,
 			continue
 		}
 		out = append(out, b.selectors(name, field.Message(), fieldPath, inside || field.IsList(), onPath)...)
+	}
+	return out
+}
+
+// objectIDs collects the object-id fields of 1 request message: every singular
+// field named "id" or ending in "_id" that holds no message, followed through
+// singular message fields, as dotted paths of proto field names. A string, a
+// number, an enum and bytes are all object ids; a map and a repeated field are
+// skipped, because a list has no 1 object id. onPath stops a cycle.
+func objectIDs(message protoreflect.MessageDescriptor, path string, onPath map[selectorVisit]bool) []string {
+	visit := selectorVisit{message: message.FullName()}
+	if onPath[visit] {
+		return nil
+	}
+	onPath[visit] = true
+	defer delete(onPath, visit)
+
+	var out []string
+	fields := message.Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if field.IsMap() || field.IsList() {
+			continue
+		}
+		fieldPath := fieldName(field, path)
+		switch field.Kind() {
+		case protoreflect.MessageKind, protoreflect.GroupKind:
+			out = append(out, objectIDs(field.Message(), fieldPath, onPath)...)
+		default:
+			name := string(field.Name())
+			if name == "id" || strings.HasSuffix(name, "_id") {
+				out = append(out, fieldPath)
+			}
+		}
 	}
 	return out
 }

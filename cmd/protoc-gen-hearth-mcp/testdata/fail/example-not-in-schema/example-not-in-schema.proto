@@ -1,0 +1,36 @@
+// The example-not-in-schema fail case: the example names the selector by its
+// proto field name, and the tool's input schema holds the JSON name only, with
+// additionalProperties false, so the example is no call of the tool.
+syntax = "proto3";
+
+package frostyard.app.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/appv1;appv1";
+
+// MoveRequest names the note to move, and the group it moves to.
+message MoveRequest {
+  // id identifies the note.
+  string id = 1;
+  // to_group is the group the note moves to.
+  string to_group = 2 [(frostyard.hearth.v1.hearth_selector) = "group"];
+}
+
+// MoveResponse reports the move.
+message MoveResponse {}
+
+// Things serves the app.
+service Things {
+  // Move moves a note.
+  rpc Move(MoveRequest) returns (MoveResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Move a note to another group."
+      examples: "{\"id\": \"n-1\", \"to_group\": \"/work\"}"
+    };
+  }
+}

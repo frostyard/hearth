@@ -20,6 +20,12 @@ import (
 // model from the files in generate only.
 func buildApp(t *testing.T, params string, sources map[string]string, generate ...string) (*App, error) {
 	t.Helper()
+	return buildAppWith(t, Build, params, sources, generate...)
+}
+
+// buildAppWith is buildApp with a choice of Build or BuildGo.
+func buildAppWith(t *testing.T, build func(*protogen.Plugin) (*App, error), params string, sources map[string]string, generate ...string) (*App, error) {
+	t.Helper()
 	dir := t.TempDir()
 	for name, src := range sources {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o600); err != nil {
@@ -76,7 +82,7 @@ func buildApp(t *testing.T, params string, sources map[string]string, generate .
 	if err != nil {
 		t.Fatalf("protogen: %v", err)
 	}
-	return Build(gen)
+	return build(gen)
 }
 
 // TestSnakeCase checks the tool names of method names.
@@ -425,5 +431,148 @@ service Things {
 	}
 	if len(app.Operations) != 1 {
 		t.Fatalf("the model holds %d operation(s), want 1", len(app.Operations))
+	}
+}
+
+// TestParseGoParams checks that a Go plugin accepts the standard parameters of
+// protoc-gen-go beside hearth's own, and that the manifest plugin still refuses
+// them.
+func TestParseGoParams(t *testing.T) {
+	params, err := ParseGoParams("paths=source_relative,module=github.com/frostyard/hearth,annotate_code,annotate_code=true,Mapp.proto=example.com/app/v1,app=marks,version=0.1.0")
+	if err != nil {
+		t.Fatalf("ParseGoParams: %v", err)
+	}
+	if params.App != "marks" || params.Version != "0.1.0" {
+		t.Errorf("ParseGoParams = %+v, want marks and 0.1.0", params)
+	}
+	for _, invalid := range []string{
+		"paths=source_relative",
+		"app=marks,version=0.1.0,paths=nowhere",
+		"app=marks,version=0.1.0,annotate_code=maybe",
+		"app=marks,version=0.1.0,Mapp.proto=",
+	} {
+		if _, err := ParseGoParams(invalid); err == nil {
+			t.Errorf("ParseGoParams(%q) = no error, want 1", invalid)
+		}
+	}
+
+	// The manifest plugin's own parameters stay strict.
+	for _, strict := range []string{
+		"app=marks,version=0.1.0,paths=source_relative",
+		"app=marks,version=0.1.0,annotate_code",
+	} {
+		if _, err := ParseParams(strict); err == nil {
+			t.Errorf("ParseParams(%q) = no error, want 1", strict)
+		}
+	}
+}
+
+// TestBuildGo checks that BuildGo builds the same model as Build when it reads
+// the standard Go parameters.
+func TestBuildGo(t *testing.T) {
+	app, err := buildAppWith(t, BuildGo, "paths=source_relative,app=app,version=0.1.0",
+		map[string]string{"app.proto": objectIDProto}, "app.proto")
+	if err != nil {
+		t.Fatalf("BuildGo: %v", err)
+	}
+	if len(app.Operations) != 4 {
+		t.Fatalf("BuildGo found %d operation(s), want 4", len(app.Operations))
+	}
+}
+
+// objectIDProto is an app with an object-id RPC, 1 with a nested object id, 1
+// with neither, 1 whose ids are no string, and a recursive message.
+const objectIDProto = `syntax = "proto3";
+package frostyard.app.v1;
+import "frostyard/hearth/v1/options.proto";
+option go_package = "example.com/app/v1;appv1";
+
+message Node {
+  string id = 1;
+  Node child = 2;
+}
+
+message GetRequest {
+  string id = 1;
+}
+
+message MoveRequest {
+  string note_id = 1;
+  Node node = 2;
+  repeated string ids = 3;
+  map<string, string> labels = 4;
+}
+
+// Color is an enum, and 1 of its fields can be an object id.
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+}
+
+message MoveIntRequest {
+  int64 id = 1;
+  bytes doc_id = 2;
+  Color state_id = 3;
+  Node node_id = 4;
+}
+
+message GetResponse {}
+message MoveResponse {}
+message RootRequest {}
+
+service Things {
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+  rpc Move(MoveRequest) returns (MoveResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+    };
+  }
+  rpc MoveInt(MoveIntRequest) returns (MoveResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+    };
+  }
+  rpc Root(RootRequest) returns (GetResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}
+`
+
+// TestObjectIDs checks the object-id walk: a singular string named "id" or
+// ending in "_id", through singular message fields, and nothing in a map, a
+// repeated field or a cycle.
+func TestObjectIDs(t *testing.T) {
+	app, err := buildApp(t, "app=app,version=0.1.0", map[string]string{"app.proto": objectIDProto}, "app.proto")
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	want := map[string][]string{
+		"frostyard.app.v1.Things.Get":     {"id"},
+		"frostyard.app.v1.Things.Move":    {"note_id", "node.id"},
+		"frostyard.app.v1.Things.MoveInt": {"id", "doc_id", "state_id", "node_id.id"},
+		"frostyard.app.v1.Things.Root":    {},
+	}
+	for _, op := range app.Operations {
+		got := op.ObjectIDs
+		if len(got) == 0 {
+			got = nil
+		}
+		if !slices.Equal(got, want[op.Name]) {
+			t.Errorf("%s: object ids = %q, want %q", op.Name, op.ObjectIDs, want[op.Name])
+		}
 	}
 }

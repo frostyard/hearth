@@ -30,26 +30,38 @@ as a product, or retires the work.
   change of an app at the same version and 0 on its next major version; and the
   plugin refuses an RPC without `hearth_rpc`, permission, effect or exposure.
 
-## Phase 2 — The permission runtime, the lodge adapter and MCP
+## Phase 2 — The permission runtime, the lodge adapter and MCP (built 2026-11-15)
 
 - `cmd/protoc-gen-hearth-authz` and `authz/`: the per-RPC permission check from
   the model, a grant as a list of items (a capability on a path), and the
   generated hook that resolves a stored object's selector inside a
-  transaction.
+  transaction ([ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
+  [specs/permissions.md](../specs/permissions.md)).
 - `lodge/`: the adapter that reads `Lodge-Principal` and `Lodge-Grant` only on
   the app's lodge socket, after the peer check.
-- `cmd/protoc-gen-hearth-mcp` and the MCP server over Connect, with the tool
-  schema from the proto3 JSON mapping and the effect as the tool's hints.
+- `cmd/protoc-gen-hearth-mcp` and `mcpserver/`, with the tool schema from the
+  proto3 JSON mapping and the effect as the tool's hints
+  ([ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
+  [specs/mcp-tools.md](../specs/mcp-tools.md)).
 - The stdio MCP server of an app (`<app>ctl mcp`), which needs no token and
   acts as the local user.
+- The demo app of `internal/e2e/`, which implements the generated hooks for an
+  in-memory store and serves its generated tools over stdio.
 - **Done when:** 1 demo app on an in-memory grant refuses a call that the grant
   does not cover, names the missing capability and selector, and serves its
-  tools to an MCP client over stdio with no token.
+  tools to an MCP client over stdio with no token. Both hold in
+  `internal/e2e`, whose tests also prove that an app without a hook does not
+  build.
+- The Connect wiring of an app's tools moves to phase 3: the generated tools
+  take a Go interface, and the client that satisfies it arrives with the
+  example app.
 
 ## Phase 3 — Events, transports and the example app
 
 - `cmd/protoc-gen-hearth-events`: the CloudEvents envelope, the outbox write in
   the change's transaction, the topic with its path segments, and the relay.
+- The `Connect` route of an app's API, and the client that satisfies the
+  generated agent interface, with the example app.
 - The transports: both publish and subscribe over the in-process transport, and
   over lodge's broker socket.
 - An example app with its README, for a developer outside frostyard: what the
@@ -70,7 +82,8 @@ as a product, or retires the work.
 
 - **Question:** which builder writes the app's `Connect` route, and does the app
   serve it or lodge proxy it? ADR-0085 settles the route (`/app/<id>/connect/`);
-  the app's own server code is phase 2's work.
+  the app's own server code, with the Connect client of its tools, is phase 3's
+  work.
 - **Question:** does an event's topic carry the object's path (as the spec's
   root-and-path rule says) or only its selector? The rule on the topic's path
   segments is written, and the publisher of a path is phase 3's work.
@@ -79,8 +92,12 @@ as a product, or retires the work.
 
 - Implements: [design/overview.md](../design/overview.md),
   [specs/options.md](../specs/options.md),
-  [specs/manifest.md](../specs/manifest.md)
+  [specs/manifest.md](../specs/manifest.md),
+  [specs/permissions.md](../specs/permissions.md),
+  [specs/mcp-tools.md](../specs/mcp-tools.md)
 - Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md),
-  [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md)
+  [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
+  [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
+  [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md),
   [frostyard/core Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)

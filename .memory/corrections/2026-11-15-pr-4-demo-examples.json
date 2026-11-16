@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-15",
+  "scope": "testdata/e2e",
+  "correction": "An example must be 1 call that the tool accepts: a selector path starts with \"/\", and every field uses its JSON name, because the tool's input schema holds the JSON names only, with additionalProperties false. protoc-gen-hearth-mcp refuses an example that does not fit the input schema, and the demo's test calls each selector example.",
+  "evidence": "frostyard/hearth#4, cross-review (openai/gpt-6.1-sol) of head 56e7590, finding 6",
+  "promoted_to": "TestExamplesFitTheTools (internal/e2e); TestFail/example-not-in-schema (cmd/protoc-gen-hearth-mcp)"
+}

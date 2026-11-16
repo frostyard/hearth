@@ -1,8 +1,8 @@
 # Commands
 
-hearth ships 2 commands: `hearth`, the CLI, and
-`protoc-gen-hearth-manifest`, the plugin that `buf` runs. The CLI reads and
-checks a manifest; it writes nothing.
+hearth ships 4 commands: `hearth`, the CLI, and 3 `protoc` plugins that `buf`
+runs — `protoc-gen-hearth-manifest`, `protoc-gen-hearth-authz` and
+`protoc-gen-hearth-mcp`. The CLI reads and checks a manifest; it writes nothing.
 
 ## `hearth`
 
@@ -45,6 +45,30 @@ It prints `FILE: valid`, or exits 2 with the reason.
 
 It writes `manifest.json` at the output root. When a rule fails it writes
 nothing, and prints 1 line for each problem to its standard error.
+
+## `protoc-gen-hearth-authz`
+
+It writes `<file>_hearth_authz.go` in the Go package of the proto file: the
+service's API interface, the hook of each RPC on an object id, the check of each
+RPC and the wrapper that runs them. It takes `app` and `version`, and the
+standard parameters of a Go plugin, which it ignores:
+
+| Parameter | Meaning |
+| --- | --- |
+| `app` | the app's id |
+| `version` | the app's semantic version |
+| `paths`, `module`, `annotate_code`, `M<file>` | the Go plugin's own, ignored |
+
+A streaming RPC is refused: 1 permission check reads 1 request. The contract is
+[the permissions guide](../guides/permissions.md).
+
+## `protoc-gen-hearth-mcp`
+
+It writes `<file>_hearth_mcp.go` in the Go package of the proto file: the part
+of the API that agents reach, the input and output schema of each tool, and the
+function that returns the tools. It takes the same parameters as
+`protoc-gen-hearth-authz`, and it writes no file for a file whose services no
+agent reaches. The contract is [the MCP guide](../guides/mcp.md).
 
 ## Exit status
 

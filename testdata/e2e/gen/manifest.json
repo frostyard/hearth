@@ -55,13 +55,31 @@
       "tool": "list_notes"
     },
     {
+      "name": "frostyard.demo.v1.NoteService.MoveNote",
+      "permission": "demo:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "to_group",
+          "selector": "group"
+        }
+      ],
+      "tool": "move_note"
+    },
+    {
       "name": "frostyard.demo.v1.NoteService.PublishNote",
       "permission": "demo:publish",
       "effect": "outward",
       "expose": [
-        "ui"
+        "ui",
+        "agent"
       ],
-      "selectors": []
+      "selectors": [],
+      "tool": "publish_note"
     }
   ],
   "events": [

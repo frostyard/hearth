@@ -1,0 +1,26 @@
+// The non-object-request fail case: an agent RPC whose request is
+// google.protobuf.Timestamp, which protojson reads and writes as a string, so the
+// tool can have no object schema.
+syntax = "proto3";
+
+package frostyard.app.v1;
+
+import "frostyard/hearth/v1/options.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "example.com/appv1;appv1";
+
+// PingResponse answers the ping.
+message PingResponse {}
+
+// Things serves the app.
+service Things {
+  // At reads the notes at 1 time.
+  rpc At(google.protobuf.Timestamp) returns (PingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_AGENT
+    };
+  }
+}

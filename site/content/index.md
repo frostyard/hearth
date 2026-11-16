@@ -21,7 +21,7 @@ hide:
 <img class="fy-hero__icon" src="assets/logo.svg" alt="">
 </div>
 
-[Install hearth](getting-started/install.md) covers the Go toolchain, the 2
+[Install hearth](getting-started/install.md) covers the Go toolchain, the 4
 commands and how to pin a version.
 
 ## What hearth gives you
@@ -44,6 +44,22 @@ commands and how to pin a version.
     Every RPC declares its permission, its effect and where it is reachable.
     An RPC that declares no permission, no effect or no exposure does not
     build, so a call can never arrive without a rule for it.
+
+-   **Permission checks in the app**
+
+    ---
+
+    `protoc-gen-hearth-authz` writes 1 check for each RPC, a hook that resolves
+    a stored object's selector value inside the app's transaction, and a
+    wrapper that refuses a call the caller's grant does not cover.
+
+-   **MCP tools, with no token on the app's own machine**
+
+    ---
+
+    `protoc-gen-hearth-mcp` writes 1 tool for each agent RPC, with the proto3
+    JSON schema and the effect's hints. The stdio server serves the same tools
+    as the local user, and needs no token.
 
 -   **A versioned manifest**
 
@@ -79,7 +95,15 @@ commands and how to pin a version.
 
     Generate a manifest, and check its compatibility against the default branch.
 
-- <span class="fy-index">04</span> **[Manifest format](reference/manifest.md)**
+- <span class="fy-index">04</span> **[Permissions](guides/permissions.md)**
+
+    Read a grant, write a hook, and trust lodge's headers on 1 socket only.
+
+- <span class="fy-index">05</span> **[MCP tools](guides/mcp.md)**
+
+    Serve an app's agent RPCs to an agent, over stdio or through lodge.
+
+- <span class="fy-index">06</span> **[Manifest format](reference/manifest.md)**
 
     Look up every member of the format.
 

@@ -41,7 +41,7 @@ service Marks {
       expose: EXPOSE_UI
       expose: EXPOSE_AGENT
       agent_description: "List the bookmarks of a folder."
-      examples: "{\"folder\": {\"name\": \"reading\"}}"
+      examples: "{\"folder\": {\"name\": \"/reading\"}}"
     };
   }
 }
@@ -136,14 +136,37 @@ plugins:
     opt:
       - app=marks
       - version=0.1.0
+  - local: protoc-gen-go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-hearth-authz
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - app=marks
+      - version=0.1.0
+  - local: protoc-gen-hearth-mcp
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - app=marks
+      - version=0.1.0
 ```
 
 ```sh
 buf generate
 ```
 
-The plugin writes `gen/manifest.json`. When a rule fails, it writes nothing and
-prints 1 line for each problem; `buf` shows the lines and exits with an error.
+The manifest plugin writes `gen/manifest.json`. When a rule fails, it writes
+nothing and prints 1 line for each problem; `buf` shows the lines and exits with
+an error.
+
+The 2 Go plugins write `<file>_hearth_authz.go` and `<file>_hearth_mcp.go` beside
+the Go code that `protoc-gen-go` writes. `buf` sends them the standard
+parameters of a Go plugin (`paths`, `module`, `annotate_code`, `M<file>`), and
+they ignore those. Read [the permissions guide](permissions.md) and
+[the MCP guide](mcp.md) for the code they write.
 
 The plugin declares the proto3 `optional` feature, so a message may use an
 `optional` field. Without that declaration, protoc and buf refuse the plugin

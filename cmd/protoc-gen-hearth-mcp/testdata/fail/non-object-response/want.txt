@@ -1,0 +1,1 @@
+an agent RPC's response google.protobuf.StringValue has no JSON object form

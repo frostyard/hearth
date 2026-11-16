@@ -32,6 +32,21 @@ type Params struct {
 // It refuses a missing or malformed app or version, and any other parameter.
 // It reports every problem it finds, 1 line each, sorted.
 func ParseParams(parameters string) (Params, error) {
+	return parseParams(parameters, false)
+}
+
+// ParseGoParams reads the parameters of a Go plugin: hearth's app and version,
+// and the standard parameters that a protoc-gen-go run sends beside them:
+// paths=import|source_relative, module=<path>, annotate_code[=true|false] and
+// M<file>=<package>. A Go plugin ignores those, and it refuses every other
+// parameter as ParseParams does.
+func ParseGoParams(parameters string) (Params, error) {
+	return parseParams(parameters, true)
+}
+
+// parseParams reads the plugin's parameters. With goPlugin, the standard
+// parameters of a Go plugin are accepted and ignored.
+func parseParams(parameters string, goPlugin bool) (Params, error) {
 	var (
 		params   Params
 		problems []string
@@ -43,7 +58,16 @@ func ParseParams(parameters string) (Params, error) {
 		}
 		name, value, ok := strings.Cut(param, "=")
 		if !ok {
+			if goPlugin && name == "annotate_code" {
+				continue
+			}
 			problems = append(problems, fmt.Sprintf("parameter %q is not <name>=<value>", param))
+			continue
+		}
+		if standard, problem := goParam(name, value); goPlugin && standard {
+			if problem != "" {
+				problems = append(problems, problem)
+			}
 			continue
 		}
 		switch name {
@@ -72,6 +96,36 @@ func ParseParams(parameters string) (Params, error) {
 		return Params{}, errors.New(strings.Join(problems, "\n"))
 	}
 	return params, nil
+}
+
+// goParam reads 1 parameter of a Go plugin. standard reports whether name is a
+// standard parameter of protoc-gen-go, which a Go plugin ignores; problem is its
+// complaint, or "" when the parameter is well formed.
+func goParam(name, value string) (standard bool, problem string) {
+	switch name {
+	case "paths":
+		if value != "import" && value != "source_relative" {
+			return true, fmt.Sprintf("the paths parameter %q must be \"import\" or \"source_relative\"", value)
+		}
+		return true, ""
+	case "module":
+		if value == "" {
+			return true, "the module parameter is empty"
+		}
+		return true, ""
+	case "annotate_code":
+		if value != "true" && value != "false" {
+			return true, fmt.Sprintf("the annotate_code parameter %q must be \"true\" or \"false\"", value)
+		}
+		return true, ""
+	}
+	if strings.HasPrefix(name, "M") {
+		if value == "" {
+			return true, fmt.Sprintf("the parameter %q names no Go package", name)
+		}
+		return true, ""
+	}
+	return false, ""
 }
 
 // snakeCase returns the MCP tool name of 1 RPC name: the name in snake_case,

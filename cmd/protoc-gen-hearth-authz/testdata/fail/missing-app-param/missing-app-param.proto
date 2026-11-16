@@ -1,0 +1,31 @@
+// The missing-app-param fail case: the plugin refuses parameters without
+// hearth's app.
+syntax = "proto3";
+
+package frostyard.app.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/appv1;appv1";
+
+// PingRequest asks for a pong. It carries an object id, so the service needs a
+// hook.
+message PingRequest {
+  // id identifies the object.
+  string id = 1;
+}
+
+// PingResponse answers the ping.
+message PingResponse {}
+
+// Things serves the app.
+service Things {
+  // Ping answers the ping.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "app:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}
