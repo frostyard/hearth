@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events",
+  "correction": "Event.Validate also checks that the topic is a literal NATS subject (no empty token, no space, control byte, * or >) and that the envelope reads back with Parse as the same event: a bad topic, or a time outside RFC 3339's years, passed and became a committed row that the relay could not drain.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head 6660d95, finding 1",
+  "promoted_to": "TestValidate, TestNewAtFarTime, TestParseRoundTripOfValidEvents (events); TestWriteChecksInvalid (events/outbox)"
+}

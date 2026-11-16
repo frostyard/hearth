@@ -21,8 +21,10 @@ hide:
 <img class="fy-hero__icon" src="assets/logo.svg" alt="">
 </div>
 
-[Install hearth](getting-started/install.md) covers the Go toolchain, the 4
-commands and how to pin a version.
+[Install hearth](getting-started/install.md) covers the Go toolchain, the 5
+commands and how to pin a version. The
+[notes-lite example](https://github.com/frostyard/hearth/tree/main/examples/notes-lite)
+builds a whole app from its README.
 
 ## What hearth gives you
 
@@ -61,6 +63,14 @@ commands and how to pin a version.
     JSON schema and the effect's hints. The stdio server serves the same tools
     as the local user, and needs no token.
 
+-   **Events that commit with the change**
+
+    ---
+
+    `protoc-gen-hearth-events` writes 1 publisher for each event. The event
+    goes to an outbox in the change's transaction, and a relay publishes it to
+    the app's own bus or to lodge's broker, and loses none on a crash.
+
 -   **A versioned manifest**
 
     ---
@@ -85,7 +95,7 @@ commands and how to pin a version.
 
 - <span class="fy-index">01</span> **[Install](getting-started/install.md)**
 
-    Install the 2 commands, and pin their version.
+    Install the 5 commands, and pin their version.
 
 - <span class="fy-index">02</span> **[The options](guides/options.md)**
 
@@ -103,7 +113,11 @@ commands and how to pin a version.
 
     Serve an app's agent RPCs to an agent, over stdio or through lodge.
 
-- <span class="fy-index">06</span> **[Manifest format](reference/manifest.md)**
+- <span class="fy-index">06</span> **[Events](guides/events.md)**
+
+    Publish an app's events with its changes, standalone or through lodge.
+
+- <span class="fy-index">07</span> **[Manifest format](reference/manifest.md)**
 
     Look up every member of the format.
 

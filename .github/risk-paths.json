@@ -98,6 +98,16 @@
       "why": "permission-generation-and-checks: auth, the Lodge-Principal and Lodge-Grant trust check of the lodge adapter"
     },
     {
+      "glob": "{events,cmd/protoc-gen-hearth-events}/**",
+      "level": "L2",
+      "why": "permission-generation-and-checks: auth, the event's author from the authenticated caller, and the topic whose path a read grant's filter matches"
+    },
+    {
+      "glob": "examples/notes-lite/notes.go",
+      "level": "L2",
+      "why": "permission-generation-and-checks: auth, the example app's permission hooks and list filter, which outside developers copy"
+    },
+    {
       "glob": "mise.toml",
       "level": "L1",
       "why": "supply-chain: supply chain, the tool pins that CI installs"

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events",
+  "correction": "An event is validated (required members, a UUID id, the topic at most 1024 bytes, the envelope at most 32 KiB) when it is built and when the outbox writes it, so it fails inside the change's transaction. A committed row that no broker takes stops the relay for every later event.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 2",
+  "promoted_to": "TestNewAtEnvelopeLimit, TestValidate (events); TestWriteChecksInvalid (events/outbox)"
+}

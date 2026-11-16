@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events",
+  "correction": "Parse decodes with encoding/json/v2 and RejectUnknownMembers: encoding/json matched member names without regard to case and took a duplicate member, so a strict parser accepted envelopes outside its contract.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 7",
+  "promoted_to": "TestParseFails (events)"
+}

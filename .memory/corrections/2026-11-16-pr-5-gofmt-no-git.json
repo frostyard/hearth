@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "examples/notes-lite",
+  "correction": "The example's gate runs gofmt -l . and fails on its error: the tutorial starts in a directory with no git repository, where git ls-files gave an empty list and gofmt then read standard input.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 3",
+  "promoted_to": "TestExampleGofmtNeedsNoGit (internal/repocheck)"
+}

@@ -1,0 +1,47 @@
+# The example app's code: its Go types from protoc-gen-go, and its manifest,
+# permission checks, MCP tools and event publishers from hearth's 4 plugins.
+# Each plugin runs with `go run` of the hearth version that go.mod requires, so
+# no plugin comes from a registry.
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: protoc-gen-go
+    out: gen
+    opt:
+      - paths=source_relative
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-authz
+    out: gen
+    opt:
+      - paths=source_relative
+      - app=notelite
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-mcp
+    out: gen
+    opt:
+      - paths=source_relative
+      - app=notelite
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-events
+    out: gen
+    opt:
+      - paths=source_relative
+      - app=notelite
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-manifest
+    out: gen
+    opt:
+      - app=notelite
+      - version=0.1.0

@@ -1,0 +1,30 @@
+// The no-event case: a service with an RPC and a message, and no event message,
+// so that the plugin writes no file.
+syntax = "proto3";
+
+package frostyard.plain.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/plainv1;plainv1";
+
+// PingRequest asks for a pong.
+message PingRequest {}
+
+// PingResponse answers with a text.
+message PingResponse {
+  // text is the answer.
+  string text = 1;
+}
+
+// Plain serves 1 RPC.
+service Plain {
+  // Ping answers.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "plain:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+    };
+  }
+}

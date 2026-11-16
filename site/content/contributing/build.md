@@ -8,22 +8,30 @@ package manager beyond that, and no network access in its tests.
 ```sh
 mise install   # golangci-lint, buf, protoc-gen-go, svu
 make check     # format, then verify
-make ci        # what CI runs: verify, the generated code, race, cross-builds
+make ci        # what CI runs: verify, the generated code, race, cross-builds, the example
 ```
 
 | Target | What it runs |
 | --- | --- |
-| `make verify` | `go mod tidy -diff`, `go vet`, a gofmt check, golangci-lint, `buf lint`, `buf format --diff`, `go test ./...` |
-| `make generate` | `buf generate` for the options, and for the end-to-end demo app |
+| `make verify` | `go mod tidy -diff`, `go vet`, a gofmt check, golangci-lint, `buf lint`, `buf format --diff`, `go test ./...`, and the same in the example |
+| `make generate` | `buf generate` for the options, for the end-to-end demo app, and for the example |
 | `make gen-check` | regenerate into a temporary directory, then fail when the committed output differs |
 | `make race` | the tests under the race detector |
 | `make cross` | build every package for linux/amd64 and arm64, darwin/arm64 and windows/amd64 |
 | `make corrections-base` | compare the corrections inbox with `BASE` |
+| `make example-manifest` | the example's manifest diff against `BASE` |
 | `make site` | build this site into `site/dist`, in strict mode |
 
 The proto files come from `buf.yaml` and `buf.lock`. `buf.lock` is in the tree
 and `buf dep update` keeps it: it pins each module dependency by digest, and it
 pins none today because `google/protobuf/descriptor.proto` is built into buf.
+
+## The example app
+
+`examples/notes-lite` is a Go module of its own, with its own `Makefile`, and
+hearth's `make ci` runs its gate. Its README is its source: each file a
+developer writes is 1 block of the README, and a test of hearth's gate fails
+when a block and its file differ. Change both together.
 
 ## The documentation site
 

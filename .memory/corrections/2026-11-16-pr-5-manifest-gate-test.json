@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "examples/notes-lite",
+  "correction": "The fail-closed manifest-check recipe has a test of each branch (no BASE, no commit, no manifest, ls-tree and show failures, a compatible and a breaking diff), with GIT and HEARTH replaced by stubs; a run against a base with no manifest proves only the skip.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 4",
+  "promoted_to": "TestManifestGate (internal/repocheck)"
+}

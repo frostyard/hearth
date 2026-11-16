@@ -32,6 +32,7 @@ nav:
       - The manifest: guides/manifest.md
       - Permissions: guides/permissions.md
       - MCP tools: guides/mcp.md
+      - Events: guides/events.md
   - Reference:
       - Manifest format: reference/manifest.md
       - Commands: reference/cli.md

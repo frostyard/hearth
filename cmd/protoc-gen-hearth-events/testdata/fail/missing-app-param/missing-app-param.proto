@@ -1,0 +1,20 @@
+// The missing-app-param failure case: an event message, and no app parameter.
+syntax = "proto3";
+
+package frostyard.notes.v1;
+
+import "frostyard/hearth/v1/options.proto";
+
+option go_package = "example.com/notesv1;notesv1";
+
+// NoteCreated is published when a note is created.
+message NoteCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "note"
+    verb: "created"
+    selector: "group"
+    read_permission: "notes:read"
+  };
+  // id identifies the note.
+  string id = 1;
+}

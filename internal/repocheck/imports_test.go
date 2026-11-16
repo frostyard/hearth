@@ -198,7 +198,14 @@ func repoFilesOf(t *testing.T, keep func(name string) bool) []string {
 // TestImportBoundary checks that hearth imports no lodge, frostyard app or
 // Pocket code, in Go or in Protobuf (frostyard/core ADR-0085).
 func TestImportBoundary(t *testing.T) {
-	for _, name := range []string{"go.mod", "go.sum"} {
+	// The example app is a module of its own (ADR-0009), so its go.mod and
+	// go.sum are checked with the same rules.
+	for _, name := range []string{
+		"go.mod",
+		"go.sum",
+		filepath.Join("examples", "notes-lite", "go.mod"),
+		filepath.Join("examples", "notes-lite", "go.sum"),
+	} {
 		data, err := os.ReadFile(filepath.Join(root, name))
 		if os.IsNotExist(err) {
 			continue
@@ -207,13 +214,13 @@ func TestImportBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		var problems []string
-		if name == "go.mod" {
+		if filepath.Base(name) == "go.mod" {
 			problems = goModProblems(string(data))
 		} else {
 			problems = goSumProblems(string(data))
 		}
 		for _, problem := range problems {
-			t.Error(problem)
+			t.Errorf("%s: %s", name, problem)
 		}
 	}
 
@@ -234,7 +241,9 @@ func TestImportBoundary(t *testing.T) {
 
 	var protos []string
 	for _, file := range repoFilesOf(t, func(name string) bool { return strings.HasSuffix(name, ".proto") }) {
-		if strings.HasPrefix(file, "proto/") || strings.HasPrefix(file, "testdata/") {
+		// The example app's protos are 1 module of their own, and its copy of
+		// hearth's options file has hearth's own import path.
+		if strings.HasPrefix(file, "proto/") || strings.HasPrefix(file, "testdata/") || strings.HasPrefix(file, "examples/") {
 			protos = append(protos, file)
 		}
 	}

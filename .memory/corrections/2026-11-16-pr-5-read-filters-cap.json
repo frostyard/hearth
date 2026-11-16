@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "events",
+  "correction": "A grant item's read filters come from the app's event specs, 1 event type at a time: only an event whose read permission is the item's capability gives filters. The app-wide filters <app>.> and <app>.*.*.<selector>.<path> also matched the events of another read permission.",
+  "evidence": "frostyard/hearth#5, cross-review (openai/gpt-6.1-sol) of head e1c5b4a, finding 1",
+  "promoted_to": "TestReadFilters, TestReadFiltersMatch (events)"
+}
