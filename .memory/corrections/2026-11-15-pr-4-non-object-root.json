@@ -3,5 +3,5 @@
   "scope": "internal/protoschema",
   "correction": "A tool's arguments and its result are JSON objects, so ForMessage refuses a root message whose proto3 JSON form is no object: Timestamp, Duration, FieldMask, Value, ListValue and every wrapper type write a string, a number, an array or a null. Struct and Empty are objects. protoc-gen-hearth-mcp refuses an agent RPC with such a request or response.",
   "evidence": "frostyard/hearth#4, cross-review (openai/gpt-6.1-sol) of head 56e7590, finding 3",
-  "promoted_to": "TestNonObjectRoot (internal/protoschema); TestFail/non-object-request and TestFail/non-object-response (cmd/protoc-gen-hearth-mcp)"
+  "promoted_to": "TestNonObjectRoot, TestStructRoot and TestEmptyRoot (internal/protoschema); TestFail/non-object-request and TestFail/non-object-response (cmd/protoc-gen-hearth-mcp)"
 }

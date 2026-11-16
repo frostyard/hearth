@@ -52,11 +52,15 @@ Go MCP SDK (github.com/modelcontextprotocol/go-sdk, v1).
   (ADR-0004), so every schema describes the call exactly.
 - **The request and the response are objects.** A tool's arguments and its
   result are JSON objects, so the request message and the response message must
-  have a JSON object form. `Struct` and `Empty` are objects; a `Timestamp`, a
-  `Duration`, a `FieldMask`, a `Value`, a `ListValue` and every wrapper type are
-  not, and the plugin refuses an agent RPC that uses 1 as its request or its
-  response. A schema that describes a string as an object would describe no
-  call, and the tool could not work.
+  have a JSON object form. `Empty` has 1. A `Timestamp`, a `Duration`, a
+  `FieldMask`, a `Value`, a `ListValue` and every wrapper type do not, and the
+  plugin refuses an agent RPC that uses 1 as its request or its response: a
+  schema that describes a string as an object would describe no call. A `Struct`
+  has an object form, but ADR-0004's rule on a map of messages keeps it out of an
+  agent RPC, because `Struct.fields` maps to `Value`; the same rule keeps `Any`
+  out. A root that is a well-known type takes that type's JSON mapping, and not
+  its descriptor's fields: a `Struct` is any JSON object, so 1 built from its
+  `fields` map would refuse the object that protojson writes.
 - **The description is the agent's.** It is the RPC's `agent_description`, or
   its leading comment, and 1 line `Example input: <json>` per example. An
   example must be a call the tool accepts, so the plugin validates each 1

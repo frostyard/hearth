@@ -121,6 +121,12 @@ early.
   a breaking change of the format changes its major version.
 - **No private hosts.** Docs write `example.com`, and never a tailnet, device or
   home-network name or a real address.
+- **1 MCP server has 1 caller.** `mcpserver.NewServer` fixes the caller of every
+  call and replaces the caller of the context it is given, so a server built
+  with `authz.LocalCaller()` never serves a caller that lodge authenticated.
+  lodge sets the caller of the app's API, per request, on the app's lodge socket,
+  and a per-call MCP transport is a later phase. The docs must not say
+  otherwise.
 - The 8 `.memory/corrections/*.json` files of the template are permanent.
 
 ## Releases

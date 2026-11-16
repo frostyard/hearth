@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/frostyard/hearth/internal/protoschema"
 )
@@ -571,10 +572,17 @@ func TestNullValue(t *testing.T) {
 	}
 }
 
-// compile returns the compiled schema of 1 message.
+// compile returns the compiled schema of 1 message of the test app, by name.
 func compile(t *testing.T, messages map[string]protoreflect.MessageDescriptor, name string) *jsonschema.Schema {
 	t.Helper()
-	data, err := protoschema.ForMessage(messages[name])
+	return compileMessage(t, messages[name])
+}
+
+// compileMessage returns the compiled schema of 1 message.
+func compileMessage(t *testing.T, md protoreflect.MessageDescriptor) *jsonschema.Schema {
+	t.Helper()
+	name := string(md.FullName())
+	data, err := protoschema.ForMessage(md)
 	if err != nil {
 		t.Fatalf("ForMessage(%s): %v", name, err)
 	}
@@ -592,4 +600,70 @@ func compile(t *testing.T, messages map[string]protoreflect.MessageDescriptor, n
 		t.Fatalf("%s: %v", name, err)
 	}
 	return schema
+}
+
+// TestStructRoot checks the root of google.protobuf.Struct: its proto3 JSON form
+// is any JSON object, so its schema is 1 object with no fixed property, and the
+// object that protojson writes validates.
+func TestStructRoot(t *testing.T) {
+	messages := descriptors(t)
+	md := fieldMessage(t, messages, "struct")
+	data, err := protoschema.ForMessage(md)
+	if err != nil {
+		t.Fatalf("ForMessage(%s): %v", md.FullName(), err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatal(err)
+	}
+	if root["type"] != "object" {
+		t.Errorf("the root schema is %v, want an object", root)
+	}
+	for _, key := range []string{"properties", "additionalProperties"} {
+		if _, ok := root[key]; ok {
+			t.Errorf("the root schema declares %q, and a Struct is any JSON object: %s", key, data)
+		}
+	}
+
+	// The real protojson output of a populated Struct validates.
+	value, err := structpb.NewStruct(map[string]any{"answer": float64(42)})
+	if err != nil {
+		t.Fatalf("structpb.NewStruct: %v", err)
+	}
+	marshalled, err := protojson.Marshal(value)
+	if err != nil {
+		t.Fatalf("protojson.Marshal: %v", err)
+	}
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(marshalled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compileMessage(t, md).Validate(instance); err != nil {
+		t.Errorf("the protojson output %s does not validate: %v", marshalled, err)
+	}
+}
+
+// TestEmptyRoot checks the root of google.protobuf.Empty: an object with no
+// property, and the empty object validates.
+func TestEmptyRoot(t *testing.T) {
+	messages := descriptors(t)
+	md := fieldMessage(t, messages, "empty")
+	data, err := protoschema.ForMessage(md)
+	if err != nil {
+		t.Fatalf("ForMessage(%s): %v", md.FullName(), err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatal(err)
+	}
+	if root["type"] != "object" {
+		t.Errorf("the root schema is %v, want an object", root)
+	}
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compileMessage(t, md).Validate(instance); err != nil {
+		t.Errorf("the empty object does not validate: %v", err)
+	}
 }

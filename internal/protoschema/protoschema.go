@@ -35,7 +35,12 @@ const nullValueName protoreflect.FullName = wellKnownPrefix + "NullValue"
 // result are JSON objects: a well-known type that protojson writes as a string,
 // a number, an array or a JSON null (Timestamp, Duration, FieldMask, Value,
 // ListValue, every wrapper type) has no such schema, and ForMessage refuses it.
-// Struct and Empty are objects, and they are allowed.
+//
+// A root message that is a well-known type with an object form uses that type's
+// JSON mapping, and not its descriptor's fields: a Struct is any JSON object, so
+// its schema is 1 object with no fixed property, and 1 built from its `fields`
+// map would refuse the object that protojson writes. The same rule holds for a
+// Struct and an Empty field of another message.
 func ForMessage(md protoreflect.MessageDescriptor) ([]byte, error) {
 	if md == nil {
 		return nil, fmt.Errorf("build the schema: the message is nil")
@@ -43,23 +48,27 @@ func ForMessage(md protoreflect.MessageDescriptor) ([]byte, error) {
 	if !HasObjectForm(md) {
 		return nil, fmt.Errorf("build the schema of %s: its proto3 JSON form is no object", md.FullName())
 	}
-	b := &builder{recursive: map[protoreflect.FullName]bool{}}
-	messages := map[protoreflect.FullName]protoreflect.MessageDescriptor{}
-	collect(md, messages)
-	b.markRecursive(messages)
+	root, mapping := wellKnown(md.FullName())
+	if !mapping {
+		b := &builder{recursive: map[protoreflect.FullName]bool{}}
+		messages := map[protoreflect.FullName]protoreflect.MessageDescriptor{}
+		collect(md, messages)
+		b.markRecursive(messages)
 
-	root, err := b.messageSchema(md)
-	if err != nil {
-		return nil, err
+		schema, err := b.messageSchema(md)
+		if err != nil {
+			return nil, err
+		}
+		root = schema
+		if len(b.defs) > 0 {
+			defs := make(map[string]any, len(b.defs))
+			for name := range b.defs {
+				defs[string(name)] = b.defs[name]
+			}
+			root["$defs"] = defs
+		}
 	}
 	root["$schema"] = draft
-	if len(b.defs) > 0 {
-		defs := make(map[string]any, len(b.defs))
-		for name := range b.defs {
-			defs[string(name)] = b.defs[name]
-		}
-		root["$defs"] = defs
-	}
 	data, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("write the schema of %s: %w", md.FullName(), err)

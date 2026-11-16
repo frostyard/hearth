@@ -77,17 +77,22 @@ request. The result is the response in the same form.
 | `google.protobuf.Any` | `{"type": "object"}`; an agent RPC must not carry 1 ([specs/options.md](options.md), rule 6) |
 
 A tool's arguments and its result are JSON objects, so the RPC's request message
-and its response message must have a JSON object form. `Struct` and `Empty` are
-objects, and they are allowed. A well-known type that protojson reads and writes
+and its response message must have a JSON object form. `Empty` has 1, and an
+agent RPC may use it. `Struct` has 1 too — any JSON object — but rule 6 of
+[specs/options.md](options.md) refuses a map whose value is a message, and
+`Struct.fields` is a map of `Value`, so an agent RPC carries no `Struct` and no
+`Any`, as a root or as a field. A well-known type that protojson reads and writes
 as a string, a number, an array or a JSON null — `Timestamp`, `Duration`,
 `FieldMask`, `Value`, `ListValue`, and every wrapper type — has no such form, and
 the plugin refuses such an RPC with
 `<rpc>: an agent RPC's request <type> has no JSON object form`, or the same for
 the response.
 
-The root of every schema is an object: it carries
-`"$schema": "https://json-schema.org/draft/2020-12/schema"`, `"type": "object"`,
-its `properties` and `"additionalProperties": false`. The bytes are canonical:
+The root of every schema is an object, and it carries
+`"$schema": "https://json-schema.org/draft/2020-12/schema"`. A message's own
+schema carries its `properties` and `"additionalProperties": false`; a root that
+is a well-known type carries that type's JSON mapping, so `Empty` is 1 object
+with no property, and a `Struct` is any JSON object. The bytes are canonical:
 the object keys sorted, 2 spaces of indent, and no trailing newline, so 2 runs of
 the generator write the same bytes. `internal/protoschema` builds them, and
 `ForMessage(md protoreflect.MessageDescriptor) ([]byte, error)` is its whole
