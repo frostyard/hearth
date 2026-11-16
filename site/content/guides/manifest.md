@@ -38,7 +38,8 @@ base=origin/main
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null ||
   { echo "no base commit $base: fetch it first"; exit 2; }
 old="$(mktemp -d)/manifest.json"
-if git cat-file -e "$base:gen/manifest.json" 2>/dev/null; then
+entry="$(git ls-tree "$base" -- gen/manifest.json)" || exit 2
+if [ -n "$entry" ]; then
   git show "$base:gen/manifest.json" >"$old" || exit 2
 fi
 hearth manifest diff "$old" gen/manifest.json
@@ -82,9 +83,10 @@ A breaking change needs the app's next major version:
 
 A new app has no old manifest, so the command prints
 `no old manifest: nothing to compare` and exits 0. The recipe above leaves OLD
-absent only for that case: it tests the path with `git cat-file -e`, so a base
-that is missing, or a `git show` that fails, stops the gate instead of skipping
-the comparison.
+absent only for that case: it looks the path up with `git ls-tree`, and only a
+lookup that succeeds and finds no entry leaves OLD absent. A base that is
+missing, a lookup that fails, or a `git show` that fails stops the gate instead
+of skipping the comparison.
 
 ## Validate 1 manifest
 

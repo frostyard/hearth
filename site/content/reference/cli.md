@@ -25,8 +25,8 @@ A path that does not exist as OLD prints
 `no old manifest: nothing to compare` and exits 0.
 
 Write the gate recipe so that it fails closed: check the base commit
-(`git rev-parse --verify`), test the manifest path with `git cat-file -e`, and
-let only an absent path at an existing base leave OLD absent. A `git show` that
+(`git rev-parse --verify`), look the manifest path up with `git ls-tree`, and
+let only a lookup that succeeds and finds no entry leave OLD absent. A `git show` that
 fails stops the gate. [The manifest guide](../guides/manifest.md) holds the
 recipe.
 

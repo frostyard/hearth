@@ -74,9 +74,10 @@ plugin and the runtime are later tasks of the
 - Fix a lint finding rather than loosening `.golangci.yml`.
 - **A gate recipe fails closed.** Only an absent manifest path at an existing
   base skips the comparison: check the base commit first
-  (`git rev-parse --verify`), then test the path (`git cat-file -e`), and never
-  treat a `git show` failure as an absent file. A shallow clone has no base
-  commit, and that stops the gate with exit 2.
+  (`git rev-parse --verify`), then look the path up (`git ls-tree`: only a
+  lookup that succeeds and prints no entry means absent), and never treat a
+  `git ls-tree` or `git show` failure as an absent file. A shallow clone has
+  no base commit, and that stops the gate with exit 2.
 
 ## Invariants
 

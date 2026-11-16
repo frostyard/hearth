@@ -149,7 +149,8 @@ base=origin/main
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null ||
   { echo "no base commit $base: fetch it first"; exit 2; }
 old="$(mktemp -d)/manifest.json"
-if git cat-file -e "$base:gen/manifest.json" 2>/dev/null; then
+entry="$(git ls-tree "$base" -- gen/manifest.json)" || exit 2
+if [ -n "$entry" ]; then
   git show "$base:gen/manifest.json" >"$old" || exit 2
 fi
 hearth manifest diff "$old" gen/manifest.json
@@ -160,8 +161,9 @@ The recipe fails closed:
 - it stops with exit 2 when the base commit is not there, which is what a
   shallow clone gives;
 - a `git show` failure stops it; such a failure is not an absent manifest;
-- only an absent manifest path at an existing base, which `git cat-file -e`
-  tests, leaves OLD absent, so the command prints
+- a `git ls-tree` failure stops it: the path lookup reads only the base's
+  trees, so its failure is never an absent manifest;
+- only a lookup that succeeds and finds no entry leaves OLD absent, so the command prints
   `no old manifest: nothing to compare` and exits 0.
 
 `hearth manifest validate FILE` reads 1 manifest and prints `FILE: valid`, or
