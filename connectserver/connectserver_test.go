@@ -1,6 +1,7 @@
 package connectserver_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -329,6 +330,107 @@ func TestLodgeRefusesAnotherSocket(t *testing.T) {
 	}
 	if want := "forbidden: the connection is not the socket of lodge"; body != want+"\n" {
 		t.Errorf("the answer = %q, want %q", body, want)
+	}
+}
+
+// stuckListener is 1 listener that gives out the connections of its Unix socket,
+// and whose next Accept then sends 1 permanent error: the error that ends
+// http.Server.Serve.
+type stuckListener struct {
+	net.Listener
+	// release is closed by the test, and Accept then sends err.
+	release chan struct{}
+	// done is closed by the test's cleanup, so that a test that stops early
+	// leaves no blocked Accept behind.
+	done chan struct{}
+	// err is the permanent error that the Accept after the first 1 returns.
+	err error
+	// calls counts the calls of Accept.
+	calls int
+}
+
+// Accept returns the connections of the socket, and then the error after the
+// test released it.
+func (l *stuckListener) Accept() (net.Conn, error) {
+	l.calls++
+	if l.calls == 1 {
+		return l.Listener.Accept()
+	}
+	select {
+	case <-l.release:
+		return nil, l.err
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+// TestServeClosesTheAcceptedConnections checks the serve error's path: when the
+// server's own Serve fails, Serve closes the connections that the server
+// accepted, so no handler runs after Serve returns.
+func TestServeClosesTheAcceptedConnections(t *testing.T) {
+	listener, path := listen(t)
+	injected := errors.New("the listener stopped")
+	stuck := &stuckListener{
+		Listener: listener,
+		release:  make(chan struct{}),
+		done:     make(chan struct{}),
+		err:      injected,
+	}
+	t.Cleanup(func() {
+		close(stuck.done)
+		_ = listener.Close()
+	})
+	served := make(chan error, 1)
+	go func() {
+		served <- connectserver.Serve(t.Context(), stuck, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "ok")
+		}))
+	}()
+
+	// 1 keep-alive connection of HTTP/1.1, opened by hand.
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+	reader := bufio.NewReader(conn)
+	health := func() *http.Request {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost/health", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return request
+	}
+	if err := health().Write(conn); err != nil {
+		t.Fatalf("write the first request: %v", err)
+	}
+	response, err := http.ReadResponse(reader, health())
+	if err != nil {
+		t.Fatalf("read the first response: %v", err)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read the first response's body: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != "ok" {
+		t.Fatalf("the first response = %d %q, want 200 ok", response.StatusCode, body)
+	}
+
+	// The listener's next Accept fails, and that ends Serve.
+	close(stuck.release)
+	if err := <-served; !errors.Is(err, injected) {
+		t.Fatalf("Serve = %v, want the listener's error %v", err, injected)
+	}
+
+	// The connection is no longer the server's: a second request on it gets no
+	// response.
+	if err := health().Write(conn); err == nil {
+		if _, err := http.ReadResponse(reader, health()); err == nil {
+			t.Fatal("the second request on the keep-alive connection got a response, and no handler must run after Serve returns")
+		}
 	}
 }
 

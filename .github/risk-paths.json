@@ -113,6 +113,11 @@
       "why": "permission-generation-and-checks: auth, the example app's permission hooks and list filter, which outside developers copy"
     },
     {
+      "glob": "examples/notes-lite/cmd/notelite/**",
+      "level": "L1",
+      "why": "permission-generation-and-checks: auth, the example's socket admission: the user id each socket admits and the private and lodge handlers, which outside developers copy"
+    },
+    {
       "glob": "mise.toml",
       "level": "L1",
       "why": "supply-chain: supply chain, the tool pins that CI installs"

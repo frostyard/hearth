@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": ".github/risk-paths.json",
+  "correction": "The example's command admits 1 user id on each of its 2 sockets and applies the private and the lodge handler, and no risk-path entry covered the file, so the admission that outside developers copy was ungated. An L1 entry now covers examples/notes-lite/cmd/notelite/**, and a test fails when a hand-written Go file that admits a socket's caller is at no L1 or L2 entry.",
+  "evidence": "cross-review of frostyard/hearth#10 at 1358be1: the example's socket admission matched no risk path",
+  "promoted_to": "TestSocketAdmissionIsRiskPaths, TestAdmissionRiskProblems (internal/workflowcheck); .github/risk-paths.json"
+}

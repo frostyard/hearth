@@ -89,8 +89,11 @@ client := demov1connect.NewNoteServiceClient(connectserver.UnixClient(socket), "
 	}))
 ```
 
-The base URL must not end with a `/` before the service path: 1 double slash
-answers `307`, and a client that follows it loses the call's body.
+A generated client trims the trailing `/` of the base URL
+(`strings.TrimRight(baseURL, "/")`), so `http://localhost/connect/` is the same
+base as `http://localhost/connect`. A request URL that a caller builds by hand is
+the caller's own: 2 slashes answer `307`, and a client that follows that answer
+loses the call's body.
 
 ## Rules
 

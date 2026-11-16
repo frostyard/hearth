@@ -145,7 +145,9 @@ func Lodge(path string, h http.Handler) http.Handler {
 }
 
 // Serve serves h on l until ctx ends, and it then shuts the server down. It
-// returns nil after a clean stop, and the server's error otherwise.
+// returns nil after a clean stop, and the server's error otherwise: an error of
+// the server closes the connections it accepted, so no new call starts after
+// Serve returns (a call in flight sees its connection close).
 //
 // The caller passes the listener of either socket: lodge.Listener(l, uid)
 // serves the socket of 1 user only, and Serve marks the connections of that
@@ -163,6 +165,10 @@ func Serve(ctx context.Context, l net.Listener, h http.Handler) error {
 	}()
 	select {
 	case err := <-served:
+		// The server stopped by itself, and its error is permanent: the
+		// listener is closed, and every connection it accepted must close too,
+		// or a keep-alive connection serves new calls after this call returns.
+		_ = server.Close()
 		return err
 	case <-ctx.Done():
 	}
