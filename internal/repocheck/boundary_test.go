@@ -46,17 +46,32 @@ func exampleAddress(s string) bool {
 	return false
 }
 
+// coreManaged reports whether dir is a skill directory that frostyard/core's
+// skills sync manages: a direct child of skills (the repository's
+// .agents/skills) that holds the sync's .synced-from-core marker. Core owns
+// and reviews that content, and this repository never edits it (core
+// ADR-0026).
+func coreManaged(skills, dir string) bool {
+	if filepath.Dir(dir) != filepath.Clean(skills) {
+		return false
+	}
+	info, err := os.Lstat(filepath.Join(dir, ".synced-from-core"))
+	return err == nil && info.Mode().IsRegular()
+}
+
 // TestNoPrivateHosts checks that the repository names no private host: no
 // tailnet or device names, no home-network names and no addresses but loopback
-// and the documentation ranges (AGENTS.md, Repository boundary).
+// and the documentation ranges (AGENTS.md, Invariants). A skill directory that
+// core's sync manages is core's text, not this repository's, and is skipped.
 func TestNoPrivateHosts(t *testing.T) {
+	skills := filepath.Join(root, ".agents", "skills")
 	files := 0
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if skipDir(d.Name()) {
+			if skipDir(d.Name()) || coreManaged(skills, path) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -93,6 +108,46 @@ func TestNoPrivateHosts(t *testing.T) {
 	}
 	if files == 0 {
 		t.Fatal("no files checked")
+	}
+}
+
+// TestCoreManaged checks that only a direct child of .agents/skills with a
+// regular .synced-from-core file counts as a core-managed skill.
+func TestCoreManaged(t *testing.T) {
+	skills := filepath.Join(t.TempDir(), ".agents", "skills")
+	mkdir := func(dir string) string {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	marker := func(dir string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, ".synced-from-core"), []byte("Managed by frostyard/core\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	managed := marker(mkdir(filepath.Join(skills, "golang-security")))
+	local := mkdir(filepath.Join(skills, "new-hearth-app"))
+	nested := marker(mkdir(filepath.Join(managed, "references")))
+	outside := marker(mkdir(filepath.Join(filepath.Dir(filepath.Dir(skills)), "docs")))
+	linked := mkdir(filepath.Join(skills, "linked"))
+	if err := os.Symlink(filepath.Join(managed, ".synced-from-core"), filepath.Join(linked, ".synced-from-core")); err != nil {
+		t.Fatal(err)
+	}
+	for dir, want := range map[string]bool{
+		managed: true,
+		local:   false,
+		nested:  false,
+		outside: false,
+		linked:  false,
+		skills:  false,
+	} {
+		if got := coreManaged(skills, dir); got != want {
+			t.Errorf("coreManaged(%s) = %v, want %v", dir, got, want)
+		}
 	}
 }
 

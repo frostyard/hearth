@@ -15,11 +15,15 @@ var (
 	// [text](target) and ![alt](target), with an optional "title".
 	mdLink = regexp.MustCompile(`\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
 	// A scheme (https:, mailto:) marks a link this test does not follow.
-	scheme      = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
-	heading     = regexp.MustCompile(`^#{1,6}\s+(.*?)\s*#*\s*$`)
-	codeSpan    = regexp.MustCompile("`[^`]*`")
-	inlineLink  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-	indexedDocs = []string{"adr", "design", "specs", "plans"}
+	scheme     = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
+	heading    = regexp.MustCompile(`^#{1,6}\s+(.*?)\s*#*\s*$`)
+	codeSpan   = regexp.MustCompile("`[^`]*`")
+	inlineLink = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	// An underscore emphasis outside code: _text_ or __text__, its opening
+	// run after no letter or digit, its closing run before none
+	// (CommonMark's rule for _, so snake_case stays text).
+	underscoreEmphasis = regexp.MustCompile(`(^|[^\p{L}\p{N}_])_+([^\s_](?:[^_]*[^\s_])?)_+($|[^\p{L}\p{N}_])`)
+	indexedDocs        = []string{"adr", "design", "specs", "plans"}
 )
 
 // root is the repository's root, from this package's directory.
@@ -89,12 +93,40 @@ func prose(text string) []string {
 	return out
 }
 
-// slug is GitHub's anchor for a heading: its text lowercased, with everything
-// but letters, digits, marks, connectors, spaces and hyphens dropped, and
-// spaces turned into hyphens.
-func slug(text string) string {
+// dropEmphasis removes the delimiters of underscore emphasis from text whose
+// code spans hold no underscore. A delimiter's neighbour can open the next match, so it
+// repeats until nothing changes.
+func dropEmphasis(text string) string {
+	for {
+		next := underscoreEmphasis.ReplaceAllString(text, "$1$2$3")
+		if next == text {
+			return text
+		}
+		text = next
+	}
+}
+
+// codeUnderscore stands for an underscore of a code span while emphasis is
+// dropped: a private-use rune, which no heading holds.
+const codeUnderscore = "\uE000"
+
+// headingText is a heading's rendered text: link text for each link, code
+// spans without their backticks, and emphasis without its underscores. GitHub
+// makes an anchor from the rendered text, so `_(Go 1.22+)_` gives "go-122".
+func headingText(text string) string {
 	text = inlineLink.ReplaceAllString(text, "$1")
-	text = strings.ReplaceAll(text, "`", "")
+	text = codeSpan.ReplaceAllStringFunc(text, func(s string) string {
+		return strings.ReplaceAll(s, "_", codeUnderscore)
+	})
+	text = strings.ReplaceAll(dropEmphasis(text), "`", "")
+	return strings.ReplaceAll(text, codeUnderscore, "_")
+}
+
+// slug is GitHub's anchor for a heading: its rendered text lowercased, with
+// everything but letters, digits, marks, connectors, spaces and hyphens
+// dropped, and spaces turned into hyphens.
+func slug(text string) string {
+	text = headingText(text)
 	var b strings.Builder
 	for _, r := range strings.ToLower(text) {
 		switch {
@@ -246,6 +278,14 @@ func TestSlugMatchesGitHub(t *testing.T) {
 		"Sign-in and browser headers":                "sign-in-and-browser-headers",
 		"[ADR-0004](0004-x.md) and caching":          "adr-0004-and-caching",
 		"Tokens, logins and nodes":                   "tokens-logins-and-nodes",
+		// Underscore emphasis is not text; an underscore inside a word or
+		// a code span is.
+		"SHOULD use `range` over integers _(Go 1.22+)_":                 "should-use-range-over-integers-go-122",
+		"`math/rand` MUST be replaced with `math/rand/v2` _(Go 1.22+)_": "mathrand-must-be-replaced-with-mathrandv2-go-122",
+		"A __bold__ _and_ _emphasised_ word":                            "a-bold-and-emphasised-word",
+		"The snake_case name and `_private` field":                      "the-snake_case-name-and-_private-field",
+		"`a_b_` and `_c`":   "a_b_-and-_c",
+		"_see `x_y`_ first": "see-x_y-first",
 	} {
 		if got := slug(text); got != want {
 			t.Errorf("slug(%q) = %q, want %q", text, got, want)
