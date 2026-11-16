@@ -52,24 +52,44 @@ as a product, or retires the work.
   tools to an MCP client over stdio with no token. Both hold in
   `internal/e2e`, whose tests also prove that an app without a hook does not
   build.
-- The Connect wiring of an app's tools moves to phase 3: the generated tools
+- The Connect wiring of an app's tools moves to phase 4: the generated tools
   take a Go interface, and the client that satisfies it arrives with the
-  example app.
+  `Connect` route.
 
-## Phase 3 — Events, transports and the example app
+## Phase 3 — Events, transports and the example app (built 2026-11-16)
 
-- `cmd/protoc-gen-hearth-events`: the CloudEvents envelope, the outbox write in
-  the change's transaction, the topic with its path segments, and the relay.
-- The `Connect` route of an app's API, and the client that satisfies the
-  generated agent interface, with the example app.
-- The transports: both publish and subscribe over the in-process transport, and
-  over lodge's broker socket.
-- An example app with its README, for a developer outside frostyard: what the
-  options mean, how to write 1 service, and how to read its manifest.
-- The `make ci` diff gate in the app's own template.
-- **Done when:** a consumer with a read grant receives an event of the app and
-  a consumer without 1 does not, and a developer outside frostyard builds the
-  example app from its README alone.
+- `cmd/protoc-gen-hearth-events` and `events/`: the CloudEvents envelope, the
+  topic with its path segments, the read filters of a grant, and 1 publisher
+  for each event message
+  ([ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
+  [specs/events.md](../specs/events.md)).
+- `events/outbox`: the outbox table written in the change's transaction, and
+  the relay that publishes each event with its id as `Nats-Msg-Id` and deletes
+  it after the acknowledgement.
+- The transports: `events/inproc`, the standalone bus that reads the same
+  outbox, and `events/broker`, which publishes over a Unix socket to a NATS
+  server with JetStream, such as lodge's broker socket.
+- `examples/notes-lite`, a module of its own built from its README alone, with
+  its own gate and the manifest diff in it
+  ([ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)).
+- A README for a developer outside frostyard: the options, the plugins, and the
+  standalone and lodge modes.
+- **Done when:** the relay loses no event when it stops after the commit or
+  after the publish, and the broker stores 1 message after a repeat; a
+  subscriber with a read filter receives the events of its path and not the
+  others; and `make ci` builds and tests the example from a clean checkout.
+
+## Phase 4 — The Connect route
+
+- The `Connect` route of an app's API, served on the app's private socket and
+  on its lodge socket behind `lodge.Serve`, and the client that satisfies the
+  generated agent interface.
+- A pin for `protoc-gen-connect-go` that meets the tool invariants: it
+  publishes no release binary with a checksum for each platform, so the pin
+  needs its own decision (ADR-0008, Consequences).
+- **Done when:** the example app serves its API over `Connect` on both sockets,
+  and a refused check returns `permission_denied` with the permission runtime's
+  text.
 
 ## Later / ideas
 
@@ -82,11 +102,8 @@ as a product, or retires the work.
 
 - **Question:** which builder writes the app's `Connect` route, and does the app
   serve it or lodge proxy it? ADR-0085 settles the route (`/app/<id>/connect/`);
-  the app's own server code, with the Connect client of its tools, is phase 3's
+  the app's own server code, with the Connect client of its tools, is phase 4's
   work.
-- **Question:** does an event's topic carry the object's path (as the spec's
-  root-and-path rule says) or only its selector? The rule on the topic's path
-  segments is written, and the publisher of a path is phase 3's work.
 
 ## References
 
@@ -94,10 +111,13 @@ as a product, or retires the work.
   [specs/options.md](../specs/options.md),
   [specs/manifest.md](../specs/manifest.md),
   [specs/permissions.md](../specs/permissions.md),
-  [specs/mcp-tools.md](../specs/mcp-tools.md)
+  [specs/mcp-tools.md](../specs/mcp-tools.md),
+  [specs/events.md](../specs/events.md)
 - Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md),
   [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
   [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
-  [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md)
+  [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
+  [ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
+  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md),
   [frostyard/core Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)

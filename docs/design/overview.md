@@ -3,11 +3,14 @@
 Living document. Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md),
 [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
 [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
-[ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md).
+[ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
+[ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
+[ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md).
 Contracts: [specs/options.md](../specs/options.md),
 [specs/manifest.md](../specs/manifest.md),
 [specs/permissions.md](../specs/permissions.md),
-[specs/mcp-tools.md](../specs/mcp-tools.md).
+[specs/mcp-tools.md](../specs/mcp-tools.md),
+[specs/events.md](../specs/events.md).
 
 ## Overview
 
@@ -25,16 +28,20 @@ app.proto ──► buf ──► protoc-gen-hearth-manifest ──► manifest.
     │                                                 └──► hearth manifest diff OLD NEW
     ├──► protoc-gen-go ──────────────► <app>/api.pb.go
     ├──► protoc-gen-hearth-authz ────► <app>/api_hearth_authz.go ──► authz/
-    └──► protoc-gen-hearth-mcp ─────► <app>/api_hearth_mcp.go ─────► mcpserver/
+    ├──► protoc-gen-hearth-mcp ─────► <app>/api_hearth_mcp.go ─────► mcpserver/
+    └──► protoc-gen-hearth-events ──► <app>/api_hearth_events.go ──► events/
                                                                         │
    lodge ──Lodge-Principal──────────► lodge/ ──authz.Caller────────────┤
    local user ──private socket──────► lodge/PrivateHandler ────────────┤
    local user ──stdio───────────────► mcpserver.ServeStdio ────────────┘
+
+   handler ──EmitM(tx)──► hearth_outbox ──outbox.Relay──┬──► events/inproc (standalone)
+                (1 transaction with the change)         └──► events/broker ──► lodge's nats.sock
 ```
 
-This document describes the parts that exist. The events plugin, the
-transports and the example app are later tasks of the
-[roadmap](../plans/0001-roadmap.md); this design doc grows with them.
+This document describes the parts that exist. The `Connect` route of an app's
+API is a later phase of the [roadmap](../plans/0001-roadmap.md); this design
+doc grows with it.
 
 ## Design
 
@@ -118,6 +125,60 @@ local-user server to a caller that lodge authenticated. `mcpserver.ServeStdio`
 serves the same tools on 2 streams, as the local user, with no token.
 [specs/mcp-tools.md](../specs/mcp-tools.md) is the exact contract.
 
+### The events
+
+`cmd/protoc-gen-hearth-events` writes 1 publisher for each event message: the
+event's `events.Spec`, `NewM`, which builds the envelope, and `EmitM`, which
+writes it to the outbox of the change's transaction. An event is a thin
+CloudEvents envelope: its own UUIDv7 `id`, the object's id as `subject`, the
+caller of the context as `author`, and the object's path as `selector`, with
+no data. Its topic is the event's topic of the manifest, then 1 token for each
+segment of the path, percent-encoded, so that a read grant on a path is a
+topic filter (`events.ReadFilters`) that a broker applies without reading the
+message. [specs/events.md](../specs/events.md) is the exact contract.
+
+### The outbox and the relay
+
+`events/outbox` keeps the table `hearth_outbox` in the app's SQLite database.
+The handler writes the event with `outbox.Tx(tx)` in the transaction of its
+change, so the event and the change commit together or not at all. The relay
+reads the table in order, publishes each event, and deletes the row only after
+the transport acknowledged it. A stop after the commit leaves the row for the
+next drain; a stop after the publish publishes the event again with the same
+`id`, which JetStream's `Nats-Msg-Id` window and the in-process bus both store
+once. The app calls `Relay.Notify` after a commit, and `Relay.Run` also drains
+on an interval.
+
+### The transports
+
+The app picks 1 transport at start, and its handlers and its outbox stay the
+same:
+
+- **Standalone:** `events/inproc` is a bus in the app's process. Its
+  subscribers, such as the app's own user interface, take a topic filter, and
+  the bus calls them in order on the relay's goroutine.
+- **On lodge:** `events/broker` connects to lodge's broker socket,
+  `/run/lodge/nats.sock`, which admits the app by its peer uid (lodge
+  [ADR-0022](https://github.com/frostyard/lodge/blob/main/docs/adr/0022-lodge-embeds-a-nats-broker-for-app-events.md)),
+  and publishes each event to JetStream, waiting for its `PubAck`. The app
+  subscribes to nothing: consumers subscribe through lodge, with the read
+  filters of their grants.
+
+`internal/natstest` starts an embedded NATS server set up as lodge's ADR-0022
+records (an account per app, the app's service import of `<id>.>`, the stream
+`app_<id>` with a 2-minute duplicate window, and a Unix socket), so the
+broker transport's tests need no lodge code.
+
+### The example app
+
+`examples/notes-lite` is a Go module of its own, `example.com/notes-lite`,
+built from its README: each file a developer writes by hand is 1 block of the
+README, and `internal/repocheck` fails when a block and its file differ. It
+vendors hearth's options file from the Go module cache, runs each hearth
+plugin as `go run github.com/frostyard/hearth/cmd/<plugin>`, keeps its notes
+and its outbox in 1 SQLite database, and serves its tools over stdio. Its own
+`Makefile` holds its gate, and hearth's `make ci` runs it.
+
 ### The generated code
 
 `buf.gen.yaml` generates the options' Go code into `gen/go/` with the local
@@ -125,7 +186,10 @@ serves the same tools on 2 streams, as the local user, with no token.
 Go code, the permission checks and the MCP tools of a small demo app into
 `internal/e2e/gen/`, and its manifest into `testdata/e2e/gen/`. All of those
 outputs are committed, `make gen-check` fails when a fresh run differs, and
-`internal/e2e` is the demo app those outputs build.
+`internal/e2e` is the demo app those outputs build. The same template runs
+`protoc-gen-hearth-events`, so the demo app has its event publishers too.
+`examples/notes-lite` regenerates its own `gen/` with its own `make generate`,
+and its `make gen-check` compares a fresh run with the tree.
 
 ## Operational notes
 
@@ -154,11 +218,15 @@ outputs are committed, `make gen-check` fails when a fresh run differs, and
 - Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md),
   [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
   [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
-  [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md)
+  [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
+  [ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
+  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)
 - Contracts: [specs/options.md](../specs/options.md),
   [specs/manifest.md](../specs/manifest.md),
   [specs/permissions.md](../specs/permissions.md),
-  [specs/mcp-tools.md](../specs/mcp-tools.md)
+  [specs/mcp-tools.md](../specs/mcp-tools.md),
+  [specs/events.md](../specs/events.md)
 - Built in: [plan 0001, phase 1](../plans/0001-roadmap.md#phase-1--options-model-manifest-and-the-gate-built-2026-11-15),
-  [plan 0001, phase 2](../plans/0001-roadmap.md#phase-2--the-permission-runtime-the-lodge-adapter-and-mcp-built-2026-11-15)
+  [plan 0001, phase 2](../plans/0001-roadmap.md#phase-2--the-permission-runtime-the-lodge-adapter-and-mcp-built-2026-11-15),
+  [plan 0001, phase 3](../plans/0001-roadmap.md#phase-3--events-transports-and-the-example-app-built-2026-11-16)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)

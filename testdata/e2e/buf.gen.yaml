@@ -1,9 +1,9 @@
 # Generate the demo app of hearth's end-to-end test (make generate): its Go
-# code, its permission checks and its MCP tools into internal/e2e/gen, and its
-# manifest into testdata/e2e/gen. The hearth plugins run from this checkout with
-# `go run`, so no remote or installed plugin is needed. testdata/ is ignored by
-# `go test ./...`, so the generated Go code lives outside it, and make gen-check
-# compares both trees with a fresh run.
+# code, its permission checks, its event publishers and its MCP tools into
+# internal/e2e/gen, and its manifest into testdata/e2e/gen. The hearth plugins
+# run from this checkout with `go run`, so no remote or installed plugin is
+# needed. testdata/ is ignored by `go test ./...`, so the generated Go code lives
+# outside it, and make gen-check compares both trees with a fresh run.
 version: v2
 plugins:
   - local: protoc-gen-go
@@ -14,6 +14,15 @@ plugins:
       - go
       - run
       - ./cmd/protoc-gen-hearth-authz
+    out: internal/e2e/gen
+    opt:
+      - paths=source_relative
+      - app=demo
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - ./cmd/protoc-gen-hearth-events
     out: internal/e2e/gen
     opt:
       - paths=source_relative

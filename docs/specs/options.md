@@ -78,7 +78,8 @@ Any other parameter is an error. The parameters arrive as
 
 ### A Go plugin's parameters
 
-A Go plugin (`protoc-gen-hearth-authz` and `protoc-gen-hearth-mcp`) writes Go
+A Go plugin (`protoc-gen-hearth-authz`, `protoc-gen-hearth-mcp` and
+`protoc-gen-hearth-events`) writes Go
 code, so `buf` and `protoc` send the standard parameters of `protoc-gen-go`
 beside hearth's own. The Go plugins read and ignore them:
 
@@ -184,6 +185,7 @@ written when a rule fails.
 | `internal/e2e/gen/frostyard/demo/v1/demo.pb.go` | `buf generate --template testdata/e2e/buf.gen.yaml` with the pinned `protoc-gen-go`, committed |
 | `internal/e2e/gen/frostyard/demo/v1/demo_hearth_authz.go` | the same run with `protoc-gen-hearth-authz`, committed |
 | `internal/e2e/gen/frostyard/demo/v1/demo_hearth_mcp.go` | the same run with `protoc-gen-hearth-mcp`, committed |
+| `internal/e2e/gen/frostyard/demo/v1/demo_hearth_events.go` | the same run with `protoc-gen-hearth-events`, committed |
 | every app's `manifest.json` | its own `make generate`, with its `app` and `version` |
 
 ## References
@@ -193,4 +195,5 @@ written when a rule fails.
 - The format it feeds: [specs/manifest.md](manifest.md)
 - The checks it generates: [specs/permissions.md](permissions.md)
 - The tools it generates: [specs/mcp-tools.md](mcp-tools.md)
+- The events it generates: [specs/events.md](events.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)

@@ -85,7 +85,8 @@ required exactly when `expose` holds `agent`.
 - **The topic carries the path.** An object at the root of a store publishes on
   `<app>.<object>.<verb>`, plus `.<selector>`. An object at the path `/a/b`
   publishes on `<topic>.a.b`: each path segment follows the topic's own
-  segments, percent-encoded by the task that publishes at a path.
+  segments, and each byte outside `[A-Za-z0-9-]` is percent-encoded
+  ([specs/events.md](events.md#the-topic)).
 - **Written only when valid.** The plugin validates the manifest against the
   schema before it writes the file. A manifest that fails is an internal error
   of the plugin.

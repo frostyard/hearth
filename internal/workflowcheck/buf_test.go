@@ -173,30 +173,57 @@ func TestBufNoRemotePlugin(t *testing.T) {
 }
 
 // TestBufDepsPinned guards frostyard/core ADR-0085: buf.lock pins every module
-// dependency by digest.
+// dependency by digest. The repository has more than 1 buf workspace (the
+// example app is a module of its own, ADR-0009), so every buf.yaml is checked
+// against the buf.lock beside it.
 func TestBufDepsPinned(t *testing.T) {
-	root := filepath.Join("..", "..")
-	data, err := os.ReadFile(filepath.Join(root, "buf.yaml"))
+	var configs []string
+	err := filepath.WalkDir(filepath.Join("..", ".."), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if skipped(d.Name(), nil) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "buf.yaml" {
+			configs = append(configs, p)
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("buf.yaml: %v", err)
+		t.Fatal(err)
 	}
-	declared, err := declaredDeps(string(data))
-	if err != nil {
-		t.Fatalf("buf.yaml: %v", err)
+	if len(configs) == 0 {
+		t.Fatal("no buf.yaml found")
 	}
-	lockText, err := os.ReadFile(filepath.Join(root, "buf.lock"))
-	hasLock := err == nil
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("buf.lock: %v", err)
+	slices.Sort(configs)
+	for _, config := range configs {
+		data, err := os.ReadFile(config)
+		if err != nil {
+			t.Fatalf("%s: %v", config, err)
+		}
+		declared, err := declaredDeps(string(data))
+		if err != nil {
+			t.Fatalf("%s: %v", config, err)
+		}
+		lockPath := filepath.Join(filepath.Dir(config), "buf.lock")
+		lockText, err := os.ReadFile(lockPath)
+		hasLock := err == nil
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("%s: %v", lockPath, err)
+		}
+		problems, err := lockProblems(true, declared, string(lockText), hasLock)
+		if err != nil {
+			t.Fatalf("%s: %v", lockPath, err)
+		}
+		for _, problem := range problems {
+			t.Errorf("%s: %s", config, problem)
+		}
+		t.Logf("%s: %d declared dependency(ies), buf.lock present: %v", config, len(declared), hasLock)
 	}
-	problems, err := lockProblems(true, declared, string(lockText), hasLock)
-	if err != nil {
-		t.Fatalf("buf.lock: %v", err)
-	}
-	for _, problem := range problems {
-		t.Error(problem)
-	}
-	t.Logf("%d declared dependency(ies), buf.lock present: %v", len(declared), hasLock)
 }
 
 // TestLockProblems checks the dependency rules on in-memory files.

@@ -1,0 +1,12 @@
+# The example app's buf workspace: its own Protobuf files, and the copy of
+# hearth's options file that the README vendors. Each module lints at STANDARD.
+version: v2
+modules:
+  - path: proto
+    lint:
+      use:
+        - STANDARD
+  - path: third_party
+    lint:
+      use:
+        - STANDARD

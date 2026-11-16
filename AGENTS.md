@@ -25,9 +25,10 @@ repository: its decision date is 2027-03-31. Phase 1 is built: the options,
 the model, the manifest plugin, the schema, the CLI, the Go gate and the docs
 site. Phase 2 is built: the permission runtime, the permission plugin, the
 lodge adapter, the MCP plugin and its server, and the demo app of
-`internal/e2e`. The events plugin, the transports and the example app are
-later tasks of the [roadmap](docs/plans/0001-roadmap.md); do not build them
-early.
+`internal/e2e`. Phase 3 is built: the events plugin, the outbox and its relay,
+the in-process and NATS transports, and the example app of
+`examples/notes-lite`. The `Connect` route is phase 4 of the
+[roadmap](docs/plans/0001-roadmap.md); do not build it early.
 
 ## Map
 
@@ -58,6 +59,17 @@ early.
   ([specs/mcp-tools.md](docs/specs/mcp-tools.md)), and the server that serves
   them, over stdio too.
 - `internal/protoschema`: the JSON Schema of the proto3 JSON form of 1 message.
+- `cmd/protoc-gen-hearth-events` and `events/`: the publishers of an app's
+  events, the CloudEvents envelope, the topic with its path segments and the
+  read filters ([specs/events.md](docs/specs/events.md)).
+- `events/outbox`: the outbox table in the change's transaction, and the relay.
+- `events/inproc` and `events/broker`: the in-process transport, and the NATS
+  transport over a Unix socket (lodge's broker socket).
+- `internal/natstest`: an embedded NATS server set up as lodge's ADR-0022
+  records, for the broker transport's tests. hearth imports no lodge code.
+- `examples/notes-lite/`: the example app, a Go module of its own
+  (`example.com/notes-lite`) built from its README; its own `Makefile` is its
+  gate ([ADR-0009](docs/adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)).
 - `testdata/e2e/`: a demo app's proto, its buf template and its committed
   manifest.
 - `internal/e2e/`: the demo app: its generated code (`internal/e2e/gen/`), its
@@ -75,7 +87,9 @@ early.
 ## Gates
 
 - `make ci` is the command to run before a push: `verify gen-check race cross
-  corrections-base`. `make check` formats first, then verifies. `mise install`
+  corrections-base example-manifest`. `verify`, `generate`, `gen-check` and
+  `race` also run the example's own targets (`make -C examples/notes-lite`),
+  and `cross` builds it. `make check` formats first, then verifies. `mise install`
   provisions golangci-lint, buf, protoc-gen-go and svu; Go comes from `go.mod`.
 - `make verify` runs `go mod tidy -diff`, `go vet ./...`, a gofmt check, the
   pinned golangci-lint, `buf lint`, `buf format --diff --exit-code` and
@@ -109,7 +123,9 @@ early.
   the tree, and `make gen-check` fails on a difference without reading git: it
   regenerates into a temporary directory and compares the 2 trees.
 - **No remote buf plugin runs.** Every plugin is a local binary that
-  `mise.lock` pins, or `go run` of this repository's own command.
+  `mise.lock` pins, or `go run` of this repository's own command (the
+  example's `go run github.com/frostyard/hearth/cmd/...` is that, through its
+  `replace`).
 - **Tools are pinned in `mise.toml` and `mise.lock`**, with a checksum for each
   platform. No workflow downloads a tool any other way.
 - **`buf.yaml` and `buf.lock` are 1 pair.** `buf.lock` is in the tree, and
@@ -127,6 +143,16 @@ early.
   lodge sets the caller of the app's API, per request, on the app's lodge socket,
   and a per-call MCP transport is a later phase. The docs must not say
   otherwise.
+- **The example is built from its README.** Each hand-written file of
+  `examples/notes-lite` is 1 block of its `README.md`, marked
+  `<!-- file: <path> -->`, and `internal/repocheck` fails when a block and its
+  file differ. Change both in 1 commit. Its `third_party/` options file is a
+  copy of `proto/frostyard/hearth/v1/options.proto`, and the same test keeps
+  them equal.
+- **An event's author is the caller of the context**, never a request field,
+  and an event is written only in the transaction of its change
+  (`outbox.Tx`). The relay deletes a row only after its transport's
+  acknowledgement.
 - The 8 `.memory/corrections/*.json` files of the template are permanent.
 
 ## Releases

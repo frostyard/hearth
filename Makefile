@@ -1,4 +1,4 @@
-.PHONY: help build fmt lint lint-version-check test race cross verify generate gen-check corrections-base vulncheck check ci clean site site-serve bump svu-version-check
+.PHONY: help build fmt lint lint-version-check test race cross verify generate gen-check corrections-base example-manifest vulncheck check ci clean site site-serve bump svu-version-check
 
 # golangci-lint's release, read from mise.toml (frostyard/core ADR-0043).
 GOLANGCI_LINT_VERSION := $(strip $(shell sed -n 's/^golangci-lint = "\(.*\)"/\1/p' mise.toml))
@@ -7,6 +7,9 @@ GOVULNCHECK_VERSION := v1.9.0
 # svu's release, read from mise.toml; make bump tags releases with it.
 SVU_VERSION := $(strip $(shell sed -n 's/^svu = "\(.*\)"/\1/p' mise.toml))
 SVU ?= svu
+# The example app: a module of its own with a gate of its own, built from its
+# README, so that an outside developer's tutorial is tested (ADR-0009).
+EXAMPLE := examples/notes-lite
 # Tracked or new Go files, skipping files deleted but not yet staged.
 GO_FILES = $(shell git ls-files --cached --others --exclude-standard '*.go' | while read -r f; do [ -e "$$f" ] && echo "$$f"; done)
 # Every buf template of the tree: the options, and the end-to-end test app.
@@ -39,6 +42,8 @@ test: ## Run the Go tests
 
 race: ## Run the Go tests under the race detector
 	CGO_ENABLED=1 go test -race ./...
+	# The example's tests run under the race detector too.
+	$(MAKE) --no-print-directory -C $(EXAMPLE) race
 
 # hearth is pure Go (CGO_ENABLED=0): the commands of a developer's machine and
 # of a build host must build on every platform the fleet uses.
@@ -47,6 +52,11 @@ cross: ## Build every package for linux/amd64 and arm64, darwin/arm64 and window
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./...
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...
+	# The example is a module of its own, so its build is its own too.
+	cd $(EXAMPLE) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...
+	cd $(EXAMPLE) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
+	cd $(EXAMPLE) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./...
+	cd $(EXAMPLE) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...
 
 # The gate triad (frostyard/core ADR-0043, ADR-0044, ADR-0083). verify is
 # credential-free and leaves a clean checkout clean; check formats first; ci
@@ -60,6 +70,9 @@ verify: ## Tidy, vet, format, lint, buf and the tests
 	buf lint
 	buf format --diff --exit-code
 	$(MAKE) --no-print-directory test
+	# The example app's own gate: an outside developer builds it from its
+	# README, so a change of hearth that breaks the tutorial fails here.
+	$(MAKE) --no-print-directory -C $(EXAMPLE) verify
 
 # The generated code and the end-to-end manifest are committed, so that a
 # change of the options or of the plugin shows up in review (frostyard/core
@@ -67,6 +80,9 @@ verify: ## Tidy, vet, format, lint, buf and the tests
 generate: ## Regenerate gen/ and the end-to-end manifest with the local plugins
 	buf generate
 	buf generate --template $(E2E_TEMPLATE) $(E2E_PROTO)
+	# The example's own templates run hearth's plugins from this checkout, which
+	# its go.mod replaces.
+	$(MAKE) -C $(EXAMPLE) generate
 
 gen-check: ## Regenerate into a temp dir, and fail when the tree differs from a fresh run
 	@test -f $(E2E_TEMPLATE) || { echo "$(E2E_TEMPLATE) is missing"; exit 1; }
@@ -83,6 +99,8 @@ gen-check: ## Regenerate into a temp dir, and fail when the tree differs from a 
 		exit 1; \
 	fi; \
 	echo "gen-check: the generated code and the committed manifest match a fresh run"
+	# The example's own templates are checked the same way.
+	$(MAKE) --no-print-directory -C $(EXAMPLE) gen-check
 
 corrections-base: ## Check the corrections inbox against BASE (skipped when BASE is empty)
 	@if [ -z "$(BASE)" ]; then \
@@ -91,14 +109,22 @@ corrections-base: ## Check the corrections inbox against BASE (skipped when BASE
 		go run ./internal/cmd/corrections-base -base "$(BASE)"; \
 	fi
 
+# The example app's manifest is its own contract: BASE is the commit to compare
+# it with, and the example's recipe fails closed when it cannot look the
+# manifest up (AGENTS.md, A gate recipe fails closed).
+example-manifest: ## Compare the example's manifest with the 1 at BASE (skipped when BASE is empty)
+	$(MAKE) --no-print-directory -C $(EXAMPLE) manifest-check BASE="$(BASE)"
+
 # Needs the network, and a new upstream advisory can fail it, so it is in no
 # gate (check, verify, ci); CI runs it as its own job.
 vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	# The example is a module of its own, so its vulnerabilities are its own too.
+	cd $(EXAMPLE) && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 check: fmt verify ## Format, then verify (the developer gate)
 
-ci: verify gen-check race cross corrections-base ## verify plus the generated-code check, race, cross-builds and corrections
+ci: verify gen-check race cross corrections-base example-manifest ## verify plus the generated-code check, race, cross-builds, corrections and the example's manifest
 
 clean: ## Remove build output
 	rm -rf build dist coverage.out coverage.html
