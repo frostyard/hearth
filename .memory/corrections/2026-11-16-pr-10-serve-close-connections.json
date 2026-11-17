@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "connectserver",
+  "correction": "When the server's own Serve failed, connectserver.Serve returned the error and left the connections that the server had accepted running, so a handler could run after Serve returned, and the example then closed its database under it. Serve now closes the server on that path, keeps the serve error, and so stops every accepted connection.",
+  "evidence": "cross-review of frostyard/hearth#10 at 1358be1: a serve error left the accepted connections running after Serve returned",
+  "promoted_to": "TestServeClosesTheAcceptedConnections (connectserver)"
+}

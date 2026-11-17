@@ -285,7 +285,7 @@ func (b *builder) valueSchema(fd protoreflect.FieldDescriptor) (any, error) {
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
 		return map[string]any{"type": "string", "pattern": `^[0-9]+$`}, nil
 	case protoreflect.FloatKind, protoreflect.DoubleKind:
-		return map[string]any{"type": "number"}, nil
+		return floatSchema(), nil
 	case protoreflect.StringKind:
 		return map[string]any{"type": "string"}, nil
 	case protoreflect.BytesKind:
@@ -328,6 +328,15 @@ func (b *builder) definition(md protoreflect.MessageDescriptor) (any, error) {
 	return map[string]any{"$ref": "#/$defs/" + string(name)}, nil
 }
 
+// floatSchema returns the schema of 1 float or double value: a JSON number, or
+// 1 of the 3 strings that proto3 JSON writes for NaN and the 2 infinities.
+func floatSchema() map[string]any {
+	return map[string]any{"anyOf": []any{
+		map[string]any{"type": "number"},
+		map[string]any{"type": "string", "enum": []any{"NaN", "Infinity", "-Infinity"}},
+	}}
+}
+
 // isWellKnown reports whether 1 full name is in the package of the well-known
 // types.
 func isWellKnown(name protoreflect.FullName) bool {
@@ -360,7 +369,7 @@ func wellKnown(name protoreflect.FullName) (map[string]any, bool) {
 	case "Empty":
 		return map[string]any{"type": "object"}, true
 	case "DoubleValue", "FloatValue":
-		return map[string]any{"type": "number"}, true
+		return floatSchema(), true
 	case "Int64Value", "UInt64Value":
 		return map[string]any{"type": "string", "pattern": `^-?[0-9]+$`}, true
 	case "Int32Value", "UInt32Value":

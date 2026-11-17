@@ -5,12 +5,14 @@ Living document. Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-pr
 [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
 [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
 [ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
-[ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md).
+[ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md),
+[ADR-0010](../adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md).
 Contracts: [specs/options.md](../specs/options.md),
 [specs/manifest.md](../specs/manifest.md),
 [specs/permissions.md](../specs/permissions.md),
 [specs/mcp-tools.md](../specs/mcp-tools.md),
-[specs/events.md](../specs/events.md).
+[specs/events.md](../specs/events.md),
+[specs/connect.md](../specs/connect.md).
 
 ## Overview
 
@@ -27,21 +29,22 @@ app.proto ──► buf ──► protoc-gen-hearth-manifest ──► manifest.
     │                                                 │
     │                                                 └──► hearth manifest diff OLD NEW
     ├──► protoc-gen-go ──────────────► <app>/api.pb.go
+    ├──► protoc-gen-connect-go ─────► <app>/apiv1connect/ ─────────► connectserver/
     ├──► protoc-gen-hearth-authz ────► <app>/api_hearth_authz.go ──► authz/
     ├──► protoc-gen-hearth-mcp ─────► <app>/api_hearth_mcp.go ─────► mcpserver/
     └──► protoc-gen-hearth-events ──► <app>/api_hearth_events.go ──► events/
                                                                         │
    lodge ──Lodge-Principal──────────► lodge/ ──authz.Caller────────────┤
    local user ──private socket──────► lodge/PrivateHandler ────────────┤
+   lodge ──POST /connect/…──────────► connectserver.Lodge ─────────────┤
+   local user ──private socket──────► connectserver.Private ───────────┤
    local user ──stdio───────────────► mcpserver.ServeStdio ────────────┘
 
    handler ──EmitM(tx)──► hearth_outbox ──outbox.Relay──┬──► events/inproc (standalone)
                 (1 transaction with the change)         └──► events/broker ──► lodge's nats.sock
 ```
 
-This document describes the parts that exist. The `Connect` route of an app's
-API is a later phase of the [roadmap](../plans/0001-roadmap.md); this design
-doc grows with it.
+This document describes the parts that exist.
 
 ## Design
 
@@ -112,6 +115,22 @@ another user. On that socket the handler reads `Lodge-Principal` and
 anything else with 403. The app's private socket deletes every `Lodge-*` header
 and sets the local user's caller.
 
+### The Connect route
+
+`connectserver/` is an app's API over Connect, on the app's 2 sockets, from the
+code that `protoc-gen-connect-go` writes with `simple`: the generated handler
+takes the `<Svc>API` that `protoc-gen-hearth-authz` returns, and the generated
+client satisfies the `<Svc>AgentAPI` of `protoc-gen-hearth-mcp`, so 1 client
+serves the app's UI and its tools. The private socket serves the API as the local
+user, and it deletes every `Lodge-*` header, so a forged header reaches no
+handler. Lodge's socket serves the same API under `/connect/`, where lodge
+forwards a user's call: only lodge's connection, and a call whose
+`Lodge-Caller` is `principal`, is admitted, and lodge's 2 headers then name the
+caller. An interceptor maps the permission runtime's refusals to Connect's codes
+with the runtime's own text, so an agent reads `permission_denied` and the
+capability it needs. The app's own routes, such as `/health`, sit outside the
+adapter. [specs/connect.md](../specs/connect.md) is the exact contract.
+
 ### The MCP tools
 
 `cmd/protoc-gen-hearth-mcp` writes 1 tool for each RPC whose exposure holds
@@ -176,15 +195,19 @@ built from its README: each file a developer writes by hand is 1 block of the
 README, and `internal/repocheck` fails when a block and its file differ. It
 vendors hearth's options file from the Go module cache, runs each hearth
 plugin as `go run github.com/frostyard/hearth/cmd/<plugin>`, keeps its notes
-and its outbox in 1 SQLite database, and serves its tools over stdio. Its own
-`Makefile` holds its gate, and hearth's `make ci` runs it.
+and its outbox in 1 SQLite database, and serves its tools over stdio. Its
+`serve` command serves its API over Connect on its private socket, and on
+lodge's socket too when `-lodge` names 1. Its own `Makefile` holds its gate,
+and hearth's `make ci` runs it.
 
 ### The generated code
 
 `buf.gen.yaml` generates the options' Go code into `gen/go/` with the local
 `protoc-gen-go` that `mise.lock` pins. `testdata/e2e/buf.gen.yaml` generates the
-Go code, the permission checks and the MCP tools of a small demo app into
-`internal/e2e/gen/`, and its manifest into `testdata/e2e/gen/`. All of those
+Go code, the Connect route, the permission checks and the MCP tools of a small
+demo app into `internal/e2e/gen/`, and its manifest into `testdata/e2e/gen/`.
+`protoc-gen-connect-go` runs with `go run` of the module that a `tool` directive
+of `go.mod` pins, so `go.sum` carries its checksum (ADR-0010). All of those
 outputs are committed, `make gen-check` fails when a fresh run differs, and
 `internal/e2e` is the demo app those outputs build. The same template runs
 `protoc-gen-hearth-events`, so the demo app has its event publishers too.
@@ -205,8 +228,9 @@ and its `make gen-check` compares a fresh run with the tree.
   buf.
 - No test uses the network, a real clock or a fixed path: the plugin's tests
   compile their Protobuf files in memory with `protocompile`.
-- The lodge tests use a Unix socket under a short directory of
-  `os.MkdirTemp("", "hearth")`, because a socket's path is 108 bytes at most.
+- The lodge tests and the Connect route's tests use a Unix socket under a short
+  directory of `os.MkdirTemp("", "hearth")`, because a socket's path is 108 bytes
+  at most.
 - `internal/e2e` builds 1 fixture that must not compile, with the tag
   `hearth_missinghook`: it proves that an app without a permission hook does not
   build.
@@ -220,13 +244,16 @@ and its `make gen-check` compares a fresh run with the tree.
   [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
   [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
   [ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
-  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)
+  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md),
+  [ADR-0010](../adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)
 - Contracts: [specs/options.md](../specs/options.md),
   [specs/manifest.md](../specs/manifest.md),
   [specs/permissions.md](../specs/permissions.md),
   [specs/mcp-tools.md](../specs/mcp-tools.md),
-  [specs/events.md](../specs/events.md)
+  [specs/events.md](../specs/events.md),
+  [specs/connect.md](../specs/connect.md)
 - Built in: [plan 0001, phase 1](../plans/0001-roadmap.md#phase-1--options-model-manifest-and-the-gate-built-2026-11-15),
   [plan 0001, phase 2](../plans/0001-roadmap.md#phase-2--the-permission-runtime-the-lodge-adapter-and-mcp-built-2026-11-15),
-  [plan 0001, phase 3](../plans/0001-roadmap.md#phase-3--events-transports-and-the-example-app-built-2026-11-16)
+  [plan 0001, phase 3](../plans/0001-roadmap.md#phase-3--events-transports-and-the-example-app-built-2026-11-16),
+  [plan 0001, phase 4](../plans/0001-roadmap.md#phase-4--the-connect-route-built-2026-11-16)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)

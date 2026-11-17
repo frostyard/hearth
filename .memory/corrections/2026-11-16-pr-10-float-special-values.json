@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "internal/protoschema",
+  "correction": "The schema of a float, a double and the 2 wrapper types was {\"type\": \"number\"}, and protojson also writes and reads NaN, Infinity and -Infinity as those 3 strings, so the schema of a tool refused a value that the tool's own decode accepts. The schema is now 1 JSON number or 1 of the 3 strings, as a field, a repeated element and a map value.",
+  "evidence": "whole-plan review of hearth main at 5d407b3: no Connect route (design Runtime); float and double schemas omit protojson's NaN and infinities",
+  "promoted_to": "TestSpecialFloats, TestScalars (internal/protoschema); docs/specs/mcp-tools.md, the schema mapping"
+}

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "connectserver",
+  "correction": "An app on hearth had no Connect route, and the design deferred 1 because protoc-gen-connect-go publishes no release binary with a checksum for mise.lock. Every app then wired its own HTTP layer, its own error mapping and its own socket admission, and no refusal reached a client with the permission runtime's text. The route is now generated, with the generator pinned by a tool directive of go.mod, and connectserver/ serves it on the app's private and lodge sockets.",
+  "evidence": "whole-plan review of hearth main at 5d407b3: no Connect route (design Runtime); float and double schemas omit protojson's NaN and infinities",
+  "promoted_to": "TestConnectPrivateSocket, TestConnectLodgeSocket, TestConnectLodgeSocketRefusesAnotherPeer, TestConnectClientIsTheAgentAPI (internal/e2e); TestConnectSockets (examples/notes-lite); TestBufGoRunToolsPinned, TestToolProblems, TestGoModTools (internal/workflowcheck); AGENTS.md, Invariants"
+}

@@ -16,7 +16,9 @@ type bufGenFile struct {
 	Version string `yaml:"version"`
 	Plugins []struct {
 		Remote string `yaml:"remote"`
-		Local  any    `yaml:"local"`
+		// Command is the local command of a plugin: the name of 1 binary, or a
+		// list of 1 command and its arguments.
+		Command any `yaml:"local"`
 	} `yaml:"plugins"`
 	// The type's name is only for the YAML decoder: a template with remote
 	// plugins is a problem wherever it is.
@@ -132,7 +134,8 @@ func lockProblems(hasConfig bool, declared []string, lockText string, hasLock bo
 }
 
 // TestBufNoRemotePlugin guards frostyard/core ADR-0085: no remote BSR plugin
-// runs, so every generated file comes from a plugin that mise.lock pins.
+// runs, so every generated file comes from a plugin that mise.lock pins, or from
+// a `go run` of a tool that a go.mod tool directive pins (ADR-0010).
 func TestBufNoRemotePlugin(t *testing.T) {
 	var templates []string
 	err := filepath.WalkDir(filepath.Join("..", ".."), func(p string, d fs.DirEntry, err error) error {
@@ -166,7 +169,7 @@ func TestBufNoRemotePlugin(t *testing.T) {
 			t.Fatalf("%s: %v", template, err)
 		}
 		for _, remote := range remotes {
-			t.Errorf("%s runs the remote plugin %s; a plugin comes from mise.lock only", template, remote)
+			t.Errorf("%s runs the remote plugin %s; a plugin comes from mise.lock or a go.mod tool directive", template, remote)
 		}
 	}
 	t.Logf("%d buf.gen template(s), no remote plugin", len(templates))

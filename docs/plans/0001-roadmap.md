@@ -52,8 +52,8 @@ as a product, or retires the work.
   tools to an MCP client over stdio with no token. Both hold in
   `internal/e2e`, whose tests also prove that an app without a hook does not
   build.
-- The Connect wiring of an app's tools moves to phase 4: the generated tools
-  take a Go interface, and the client that satisfies it arrives with the
+- The Connect wiring of an app's tools moved to phase 4: the generated tools
+  take a Go interface, and the client that satisfies it arrived with the
   `Connect` route.
 
 ## Phase 3 — Events, transports and the example app (built 2026-11-16)
@@ -79,14 +79,20 @@ as a product, or retires the work.
   subscriber with a read filter receives the events of its path and not the
   others; and `make ci` builds and tests the example from a clean checkout.
 
-## Phase 4 — The Connect route
+## Phase 4 — The Connect route (built 2026-11-16)
 
-- The `Connect` route of an app's API, served on the app's private socket and
-  on its lodge socket behind `lodge.Serve`, and the client that satisfies the
-  generated agent interface.
-- A pin for `protoc-gen-connect-go` that meets the tool invariants: it
-  publishes no release binary with a checksum for each platform, so the pin
-  needs its own decision (ADR-0008, Consequences).
+- `connectserver/`: the API of an app's service over Connect, served on the
+  app's private socket as the local user and on its lodge socket under
+  `/connect/` with lodge's caller, with the interceptor that maps the permission
+  runtime's refusals to Connect's codes and text
+  ([ADR-0010](../adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md),
+  [specs/connect.md](../specs/connect.md)).
+- A pin for `protoc-gen-connect-go` that meets the tool invariants: a `tool`
+  directive of `go.mod`, whose checksum is in `go.sum`, and a `go run` plugin in
+  each buf template, which `internal/workflowcheck` guards. The `simple` option
+  makes the authz API the handler and the generated client the agent API.
+- The demo app of `internal/e2e` and the example app serve their API over
+  Connect on both sockets, and their tests prove the refusal's code and text.
 - **Done when:** the example app serves its API over `Connect` on both sockets,
   and a refused check returns `permission_denied` with the permission runtime's
   text.
@@ -100,10 +106,10 @@ as a product, or retires the work.
 
 ## Open questions
 
-- **Question:** which builder writes the app's `Connect` route, and does the app
-  serve it or lodge proxy it? ADR-0085 settles the route (`/app/<id>/connect/`);
-  the app's own server code, with the Connect client of its tools, is phase 4's
-  work.
+None: phase 4 answered the question of who writes an app's `Connect` route.
+`protoc-gen-connect-go` writes it, the app serves it on its own 2 sockets behind
+`connectserver/`, and lodge forwards a user's call at `/connect/<service>/<method>`
+([ADR-0010](../adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)).
 
 ## References
 
@@ -112,12 +118,14 @@ as a product, or retires the work.
   [specs/manifest.md](../specs/manifest.md),
   [specs/permissions.md](../specs/permissions.md),
   [specs/mcp-tools.md](../specs/mcp-tools.md),
-  [specs/events.md](../specs/events.md)
+  [specs/events.md](../specs/events.md),
+  [specs/connect.md](../specs/connect.md)
 - Rationale: [ADR-0004](../adr/0004-generate-the-manifest-from-protobuf-options.md),
   [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
   [ADR-0006](../adr/0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md),
   [ADR-0007](../adr/0007-generate-mcp-tools-from-agent-rpcs.md),
   [ADR-0008](../adr/0008-publish-thin-events-through-a-transactional-outbox.md),
-  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md)
+  [ADR-0009](../adr/0009-keep-the-example-app-a-module-of-its-own-built-from-its-readme.md),
+  [ADR-0010](../adr/0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md),
   [frostyard/core Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)

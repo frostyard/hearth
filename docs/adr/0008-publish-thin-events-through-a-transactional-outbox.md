@@ -1,6 +1,7 @@
 # 0008 — Publish thin events through a transactional outbox
 
-- **Status:** Accepted
+- **Status:** Accepted; its Consequence on the Connect route is superseded by
+  [ADR-0010](0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)
 - **Date:** 2026-11-16
 
 ## Context
@@ -120,11 +121,13 @@ These facts hold:
 - hearth depends on `github.com/nats-io/nats.go`, and its tests on
   `github.com/nats-io/nats-server/v2` and `modernc.org/sqlite`. None is lodge's
   code.
-- The `Connect` route of an app's API is still not built: the code generator
-  it needs, `protoc-gen-connect-go`, publishes no release binary with a
-  checksum for each platform, so `mise.lock` cannot pin it as hearth's
-  invariants require. Its pin is a later decision of the
-  [roadmap](../plans/0001-roadmap.md).
+- The `Connect` route of an app's API was not built here: the code generator it
+  needs, `protoc-gen-connect-go`, publishes no release binary with a checksum
+  for each platform, so `mise.lock` could not pin it as hearth's invariants
+  require. That decision was phase 4 of the [roadmap](../plans/0001-roadmap.md),
+  and the route is now built with the generator pinned by a `tool` directive of
+  `go.mod`: see
+  [ADR-0010](0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md).
 
 ## Alternatives considered
 
@@ -150,6 +153,9 @@ These facts hold:
 - Shapes: [design/overview.md](../design/overview.md),
   [specs/events.md](../specs/events.md),
   [plan 0001, phase 3](../plans/0001-roadmap.md#phase-3--events-transports-and-the-example-app-built-2026-11-16)
+- Superseded in part by:
+  [ADR-0010](0010-serve-the-connect-route-with-a-go-mod-pinned-generator.md)
+  (the Connect route)
 - Builds on: [ADR-0004](0004-generate-the-manifest-from-protobuf-options.md)
   (each event's type, topic and read permission),
   [ADR-0006](0006-check-permissions-in-the-app-and-trust-lodge-only-on-its-socket.md)

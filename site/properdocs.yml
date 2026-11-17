@@ -31,6 +31,7 @@ nav:
       - The options: guides/options.md
       - The manifest: guides/manifest.md
       - Permissions: guides/permissions.md
+      - The Connect route: guides/connect.md
       - MCP tools: guides/mcp.md
       - Events: guides/events.md
   - Reference:

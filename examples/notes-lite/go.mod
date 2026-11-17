@@ -3,6 +3,7 @@ module example.com/notes-lite
 go 1.27.4
 
 require (
+	connectrpc.com/connect v1.21.1
 	github.com/frostyard/hearth v0.0.0-20261116071607-859e17e3e4c6
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	google.golang.org/protobuf v1.36.12
@@ -38,6 +39,7 @@ require (
 replace github.com/frostyard/hearth => ../..
 
 tool (
+	connectrpc.com/connect/cmd/protoc-gen-connect-go
 	github.com/frostyard/hearth/cmd/hearth
 	github.com/frostyard/hearth/cmd/protoc-gen-hearth-authz
 	github.com/frostyard/hearth/cmd/protoc-gen-hearth-events

@@ -2,16 +2,26 @@ package notes_test
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
+	"net"
+	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"connectrpc.com/connect"
+
 	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/connectserver"
 	"github.com/frostyard/hearth/events"
 	"github.com/frostyard/hearth/events/inproc"
 	"github.com/frostyard/hearth/events/outbox"
+	"github.com/frostyard/hearth/lodge"
 
 	"example.com/notes-lite"
 	notesv1 "example.com/notes-lite/gen/example/notes/v1"
+	"example.com/notes-lite/gen/example/notes/v1/notesv1connect"
 )
 
 // app returns the example app on a database in a temporary directory.
@@ -256,5 +266,121 @@ func TestReadFilters(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("the consumer got %d events more, want none", len(got))
+	}
+}
+
+// setHeaders is a client interceptor that sets the headers of each call.
+type setHeaders map[string]string
+
+// WrapUnary implements connect.Interceptor.
+func (h setHeaders) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		for name, value := range h {
+			req.Header().Set(name, value)
+		}
+		return next(ctx, req)
+	}
+}
+
+// WrapStreamingClient implements connect.Interceptor.
+func (h setHeaders) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler implements connect.Interceptor.
+func (h setHeaders) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+// lodgeCall returns the headers of a call that lodge forwards for 1 principal
+// with 1 grant.
+func lodgeCall(t *testing.T, grant string) setHeaders {
+	t.Helper()
+	return setHeaders{
+		connectserver.CallerHeader: connectserver.PrincipalCaller,
+		lodge.PrincipalHeader:      "chani",
+		lodge.GrantHeader:          base64.RawURLEncoding.EncodeToString([]byte(grant)),
+	}
+}
+
+// socketPath returns a path for a Unix socket in a directory of its own,
+// because a socket's path is 108 bytes at most and a test's directory can be
+// longer.
+func socketPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "notelite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("remove %s: %v", dir, err)
+		}
+	})
+	return filepath.Join(dir, "socket")
+}
+
+// serveSocket serves 1 handler over Connect on 1 Unix socket that admits the
+// connections of 1 user, and it returns the socket's path.
+func serveSocket(t *testing.T, uid int, handler http.Handler) string {
+	t.Helper()
+	path := socketPath(t)
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	served := make(chan error, 1)
+	go func() {
+		served <- connectserver.Serve(ctx, lodge.Listener(listener, uid), handler)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-served; err != nil {
+			t.Errorf("Serve: %v", err)
+		}
+	})
+	return path
+}
+
+// TestConnectSockets checks the app's 2 sockets: the app's own user writes and
+// lists 1 note on the private socket, and a caller whose grant reads /home is
+// refused 1 list of /work on lodge's socket, with the permission runtime's own
+// text.
+func TestConnectSockets(t *testing.T) {
+	example := app(t)
+	path, handler := notesv1connect.NewNoteServiceHandler(example.API(), connectserver.HandlerOptions()...)
+	private := serveSocket(t, os.Getuid(), connectserver.Private(path, handler))
+	onLodge := serveSocket(t, os.Getuid(), connectserver.Lodge(path, handler))
+
+	local := notesv1connect.NewNoteServiceClient(connectserver.UnixClient(private), "http://localhost")
+	created, err := local.CreateNote(t.Context(), &notesv1.CreateNoteRequest{Folder: "/work", Title: "buy milk"})
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+	listing, err := local.ListNotes(t.Context(), &notesv1.ListNotesRequest{Folder: "/work"})
+	if err != nil {
+		t.Fatalf("ListNotes: %v", err)
+	}
+	if len(listing.GetNotes()) != 1 || listing.GetNotes()[0].GetId() != created.GetNote().GetId() {
+		t.Fatalf("ListNotes of /work = %v, want the 1 note that the app's own user wrote", listing.GetNotes())
+	}
+
+	grant := `[{"cap":"notelite:read","sel":{"folder":"/home"}}]`
+	caller := notesv1connect.NewNoteServiceClient(connectserver.UnixClient(onLodge), "http://localhost/connect",
+		connect.WithInterceptors(lodgeCall(t, grant)))
+	_, err = caller.ListNotes(t.Context(), &notesv1.ListNotesRequest{Folder: "/work"})
+	if err == nil {
+		t.Fatal("ListNotes of /work passed, and the grant reads /home")
+	}
+	if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
+		t.Errorf("the refusal's code = %v, want %v", got, connect.CodePermissionDenied)
+	}
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("the refusal = %T, want a *connect.Error", err)
+	}
+	if want := "permission denied: needs notelite:read on folder=/work"; connectErr.Message() != want {
+		t.Errorf("the refusal = %q, want %q", connectErr.Message(), want)
 	}
 }

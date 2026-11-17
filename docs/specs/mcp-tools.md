@@ -45,7 +45,7 @@ request. The result is the response in the same form.
 | `int32`, `sint32`, `sfixed32`, `uint32`, `fixed32` | `{"type": "integer"}` |
 | `int64`, `sint64`, `sfixed64` | `{"type": "string", "pattern": "^-?[0-9]+$"}` |
 | `uint64`, `fixed64` | `{"type": "string", "pattern": "^[0-9]+$"}` |
-| `float`, `double` | `{"type": "number"}` |
+| `float`, `double` | `{"anyOf": [{"type": "number"}, {"type": "string", "enum": ["NaN", "Infinity", "-Infinity"]}]}` |
 | `bool` | `{"type": "boolean"}` |
 | `string` | `{"type": "string"}` |
 | `bytes` | `{"type": "string", "contentEncoding": "base64"}` |
@@ -68,7 +68,7 @@ request. The result is the response in the same form.
 | `google.protobuf.ListValue` | `{"type": "array"}` |
 | `google.protobuf.Empty` | `{"type": "object"}` |
 | `google.protobuf.NullValue` | `{"type": "null"}` |
-| `google.protobuf.DoubleValue`, `FloatValue` | `{"type": "number"}` |
+| `google.protobuf.DoubleValue`, `FloatValue` | `{"anyOf": [{"type": "number"}, {"type": "string", "enum": ["NaN", "Infinity", "-Infinity"]}]}` |
 | `google.protobuf.Int64Value`, `UInt64Value` | `{"type": "string", "pattern": "^-?[0-9]+$"}` |
 | `google.protobuf.Int32Value`, `UInt32Value` | `{"type": "integer"}` |
 | `google.protobuf.BoolValue` | `{"type": "boolean"}` |
@@ -87,6 +87,11 @@ as a string, a number, an array or a JSON null — `Timestamp`, `Duration`,
 the plugin refuses such an RPC with
 `<rpc>: an agent RPC's request <type> has no JSON object form`, or the same for
 the response.
+
+proto3 JSON writes a `float` and a `double` as a JSON number, and it writes
+`NaN`, `Infinity` and `-Infinity` as those 3 strings, so the schema of a float
+admits both forms. The same schema holds for the 2 wrapper types, a repeated
+element and a map value.
 
 The root of every schema is an object, and it carries
 `"$schema": "https://json-schema.org/draft/2020-12/schema"`. A message's own

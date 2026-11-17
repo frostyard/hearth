@@ -3,6 +3,7 @@ module github.com/frostyard/hearth
 go 1.27.4
 
 require (
+	connectrpc.com/connect v1.21.1
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nats-io/nats-server/v2 v2.15.3
@@ -40,3 +41,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+tool connectrpc.com/connect/cmd/protoc-gen-connect-go
