@@ -170,7 +170,7 @@ directive of `go.mod`
   acknowledgement.
 - The 8 `.memory/corrections/*.json` files of the template are permanent.
 
-## Releases
+## Releases and dependencies
 
 - **Who tags: Brian.** Agents never tag, push tags or release. A due release
   goes to Brian as an ask.
@@ -185,6 +185,17 @@ directive of `go.mod`
   version. The newest 1 is the first line of
   `git ls-remote --tags --refs --sort=-v:refname origin 'refs/tags/v[0-9]*'`,
   or GitHub > frostyard/hearth > Tags.
+- A tag runs no workflow and makes no GitHub release: Go users take the
+  module through its tag.
+- Internal dependencies: none in the root `go.mod`.
+  `examples/notes-lite/go.mod` requires `github.com/frostyard/hearth` through
+  its `replace` to `../..`, so it always builds this tree.
+  `.github/workflows/risk-paths.yml` pins frostyard/core's
+  `.github/workflows/pr-triage.yml` at a commit, since core has no release
+  tags.
+- Who uses this repository: frostyard/frostmarks, frostyard/frostwatch and
+  frostyard/lodge require `github.com/frostyard/hearth` in their `go.mod`, and
+  frostmarks also runs its plugins as `tool`s.
 
 ## Repository baseline
 
