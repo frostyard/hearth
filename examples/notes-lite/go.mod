@@ -7,7 +7,7 @@ require (
 	github.com/frostyard/hearth v0.0.0-20261116071607-859e17e3e4c6
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
