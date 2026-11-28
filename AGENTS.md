@@ -222,8 +222,12 @@ The repository follows core's baseline (frostyard/core ADR-0071, its spec
   A glob that matches no file yet is allowed, because a later task adds those
   paths. A release workflow, install script, unit, credential store, auth check
   or socket admission joins the list in the pull request that adds it.
-- `.github/dependabot.yml` (B13): 1 entry for each manifest (`go.mod`), each
-  with exactly 1 `patterns: ["*"]` group.
+- `.github/dependabot.yml` (B13, core ADR-0089): exactly 1 entry for each
+  ecosystem. Each schedule has only `interval: monthly`. The entries are
+  `github-actions` at `/` and `gomod` with `/` and `/examples/notes-lite`
+  in its `directories`. A new manifest joins its ecosystem's entry. Each
+  entry has exactly 1 `patterns: ["*"]` group, no `group-by`, and no
+  `applies-to`.
 - Every `uses:` is a 40-character commit SHA with a version comment, every
   workflow has `permissions: {}` at the top, and every checkout sets
   `persist-credentials: false` (B5).

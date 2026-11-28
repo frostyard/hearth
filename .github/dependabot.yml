@@ -1,14 +1,15 @@
-# Dependabot (frostyard/core ADR-0071 row B13). This repository has 3
-# manifests that need updates: the actions the workflows pin, the Go module of
-# go.mod, and the example app's own Go module (docs/adr/0009). Each entry has 1 group with `patterns: ["*"]`, so each entry opens
-# at most 1 version-update PR for each run (ADR-0075). The group has no
-# `applies-to`, so security updates stay 1 PR each.
+# Dependabot (frostyard/core ADR-0071 row B13, ADR-0075 and ADR-0089).
+# Each ecosystem has 1 entry. The gomod entry lists the root module and the
+# example app's own module (docs/adr/0009) in directories. Each entry has a
+# monthly schedule and 1 group with `patterns: ["*"]`, so each ecosystem
+# opens at most 1 version-update PR a month. The groups have no `applies-to`,
+# so security updates stay immediate, with 1 PR each.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
@@ -18,25 +19,15 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: "gomod"
-    directory: "/"
+    directories:
+      - "/"
+      - "/examples/notes-lite"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "build"
       include: "scope"
     groups:
       go:
-        patterns: ["*"]
-
-  - package-ecosystem: "gomod"
-    directory: "/examples/notes-lite"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build"
-      include: "scope"
-    groups:
-      example:
         patterns: ["*"]
